@@ -111,7 +111,18 @@
 
     <div class="small">・駅設置：マップ上クリックで駅を置く（設置費用あり）</div>
     <div class="small">・線路接続：駅をクリックして選択 → 2つ目で接続</div>
-  </div>
+
+    <div style="margin-top:8px; border-top:1px solid #ccc; padding-top:6px;">
+        <button class="btn" id="btnRouteMode">路線作成モード</button>
+        <button class="btn secondary" id="btnRouteRegister" disabled>路線登録</button>
+        <div id="routeCreateInfo" style="margin-top:4px; font-size:12px; color:#333;">選択駅: なし</div>
+    </div>
+
+    <div style="margin-top:6px; border-top:1px solid #ccc; padding-top:6px;">
+        <button class="btn" id="btnAddStationOnRoute">路線上に駅追加</button>
+        <div id="routeAddInfo" style="margin-top:4px; font-size:12px; color:#333;">路線をクリックして駅追加</div>
+        </div>
+    </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -591,6 +602,98 @@
     // グローバルに公開（簡易）
     window.Company = Company;
     window.log = log;
+
+    let mode = null;  // 'station', 'connect', 'route', 'addStation'
+let routeTempStations = [];
+let routeTempLine = null;
+
+// HUD 更新関数
+function updateHUD() {
+  document.getElementById('stationCount').innerText = Company.stations.length;
+  document.getElementById('routeCount').innerText = Company.routes.length;
+  if(routeTempStations.length){
+    document.getElementById('routeCreateInfo').innerText = 
+      `選択駅: ${routeTempStations.map(s=>s.id).join(' → ')}`;
+    document.getElementById('btnRouteRegister').disabled = false;
+  } else {
+    document.getElementById('routeCreateInfo').innerText = '選択駅: なし';
+    document.getElementById('btnRouteRegister').disabled = true;
+  }
+}
+
+// 路線作成モードで駅クリック
+function stationClickHandler(station){
+  if(mode==='route'){
+    routeTempStations.push(station);
+    if(routeTempLine) map.removeLayer(routeTempLine);
+    const latlngs = routeTempStations.map(s=>s.latlng);
+    routeTempLine = L.polyline(latlngs,{color:'#2364a5',weight:5,opacity:0.7}).addTo(map);
+    updateHUD();
+  }
+}
+
+// 路線登録
+function registerRoute() {
+  if(routeTempStations.length<2) return alert('駅は2つ以上選択してください');
+  const id = Company.nextRouteId++;
+  const latlngs = routeTempStations.map(s=>s.latlng);
+  const poly = L.polyline(latlngs,{color:'#2364a5',weight:5,opacity:0.9}).addTo(map);
+  const newRoute = {id,name:`Route#${id}`,stations:routeTempStations.map(s=>s.id),polyline:poly,vehicles:[]};
+  poly.bindPopup(routePopupHtml(newRoute)).on('popupopen', ()=> attachRoutePopupHandlers(newRoute));
+  Company.routes.push(newRoute);
+
+  routeTempStations = [];
+  if(routeTempLine){ map.removeLayer(routeTempLine); routeTempLine=null; }
+  updateHUD();
+}
+
+// 路線ポップアップHTML
+function routePopupHtml(route){
+  return `
+    <div>
+      <b>${route.name}</b><br>
+      駅: ${route.stations.join(' → ')}<br>
+      <button id="buyVehicle_${route.id}">車両購入</button>
+      <button id="routeDelete_${route.id}">路線削除</button>
+    </div>
+  `;
+}
+
+// 路線ポップアップ処理
+function attachRoutePopupHandlers(route){
+  document.getElementById(`buyVehicle_${route.id}`).onclick = ()=>{
+    const cost = 100000;
+    if(Company.money<cost) return alert('資金不足');
+    Company.money -= cost;
+    route.vehicles.push({id:Date.now()});
+    updateHUD();
+    alert('車両購入しました');
+  };
+  document.getElementById(`routeDelete_${route.id}`).onclick = ()=>{
+    map.removeLayer(route.polyline);
+    Company.routes = Company.routes.filter(r=>r.id!==route.id);
+    updateHUD();
+  };
+}
+
+// モード切替ボタン
+document.getElementById('btnPlaceStation').onclick = ()=> mode='station';
+document.getElementById('btnConnect').onclick = ()=> mode='connect';
+document.getElementById('btnRouteMode').onclick = ()=> mode='route';
+document.getElementById('btnAddStationOnRoute').onclick = ()=> mode='addStation';
+document.getElementById('btnRouteRegister').onclick = registerRoute;
+
+// 駅マーカークリック
+function addStationMarkersClick() {
+  Company.stations.forEach(s=>{
+    s.marker.off('click').on('click',()=>stationClickHandler(s));
+  });
+}
+
+setInterval(()=>{ 
+  updateHUD(); 
+  addStationMarkersClick(); 
+},500);
 
   </script>
 </body>

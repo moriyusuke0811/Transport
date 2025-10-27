@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>交通会社経営ミニゲーム（プロトタイプ）</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <style>
+    html,body{height:100%;margin:0;font-family:Helvetica,Arial}
+    #map{position:fixed;left:0;top:0;right:320px;bottom:0}
+    #panel{position:fixed;right:0;top:0;width:320px;bottom:0;padding:12px;box-sizing:border-box;background:#f7f9fc;border-left:1px solid #d6dde6;overflow:auto}
+    h2{margin:6px 0 10px;font-size:16px}
+    .btn{display:inline-block;padding:6px 10px;border-radius:6px;background:#2c7dce;color:#fff;text-decoration:none;cursor:pointer;margin:4px 2px}
+    .list{margin:8px 0;padding:8px;background:#fff;border:1px solid #dcdfe6;border-radius:8px}
+    label{display:block;margin-top:8px;font-size:13px}
+    input,select{width:100%;padding:6px;border-radius:6px;border:1px solid #cfd8e3}
+    .small{font-size:12px;color:#666}
+    .company-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed #eee}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <h2>交通会社経営ミニゲーム ⚙️</h2>
+    <div class="small">使い方: 地図上で路線を引いて（左上の鉛筆アイコン）、路線を会社に割り当て、運行を開始します。人口データはランダム生成のダミーです。</div>
+
+    <div style="margin-top:10px">
+      <label>会社名</label>
+      <input id="companyName" placeholder="会社名を入力" value="YMS Transit">
+      <label>車種</label>
+      <select id="vehicleType"><option>Bus</option><option>Train</option><option>Ship</option></select>
+      <label>運賃（1人あたり）</label>
+      <input id="fare" value="1.0">
+      <div style="margin-top:8px">
+        <button id="createCompany" class="btn">会社を作成</button>
+      </div>
+    </div>
+
+    <h3 style="margin-top:14px">会社一覧</h3>
+    <div id="companies" class="list"></div>
+
+    <h3 style="margin-top:10px">操作</h3>
+    <div>
+      <button id="toggleSim" class="btn">▶ 運行開始</button>
+      <button id="clearRoutes" class="btn" style="background:#ff6b6b">ルート全消去</button>
+    </div>
+
+    <h3 style="margin-top:12px">デバッグ / 情報</h3>
+    <div id="info" class="list"><small>ログがここに表示されます。</small></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script>
+    // マップ初期化
+    const map = L.map('map').setView([35.68,139.76], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
+
+    // 層グループ
+    const drawnItems = new L.FeatureGroup().addTo(map);
+    const routeLayer = new L.LayerGroup().addTo(map);
+    
+    // ダミー人口データ生成
+    const popPoints = [];
+    function generatePopulation(n=250){
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      for(let i=0;i<n;i++){
+        const lat = sw.lat + Math.random()*(ne.lat-sw.lat);
+        const lng = sw.lng + Math.random()*(ne.lng-sw.lng);
+        const pop = Math.round(50 + Math.random()*6000);
+        const m = L.circleMarker([lat,lng],{radius: Math.max(3, Math.log(pop)/1.2), opacity:0.7}).bindTooltip('人口:'+pop);
+        m.pop = pop; m.addTo(map);
+        popPoints.push(m);
+      }
+    }
+    generatePopulation(300);
+
+    // Leaflet.draw
+    const drawControl = new L.Control.Draw({
+      edit: {featureGroup: drawnItems, edit: true, remove:true},
+      draw: {polygon:false, rectangle:false, circle:false, marker:false, circlemarker:false, polyline:{shapeOptions:{color:'#2c7dce'}}}
+    });
+    map.addControl(drawControl);
+
+    // データ構造
+    const Companies = []; // {id,name,vehicleType,fare,routes:[{id,polyline,stops}],vehicles:[{marker,routeIndex,progress}]}
+    let routes = [];
+    let simRunning = false;
+    let simTimer = null;
+
+    // ユーティリティ
+    function log(msg){
+      const el = document.getElementById('info');
+      const p = document.createElement('div'); p.textContent = '['+new Date().toLocaleTimeString()+'] '+msg; el.prepend(p);
+    }
+
+    function addCompanyToUI(){
+      const el = document.getElementById('companies'); el.innerHTML='';
+      Companies.forEach(c=>{
+        const row = document.createElement('div'); row.className='company-row';
+        const left = document.createElement('div'); left.innerHTML='<b>'+c.name+'</b><div class="small">'+c.vehicleType+' / 運賃:'+c.fare+'</div>';
+        const right = document.createElement('div');
+        const btnAssign = document.createElement('button'); btnAssign.textContent='路線割当'; btnAssign.className='btn'; btnAssign.onclick=()=>assignRouteToCompany(c.id);
+        const btnStart = document.createElement('button'); btnStart.textContent='車両追加'; btnStart.className='btn'; btnStart.onclick=()=>addVehicleToCompany(c.id);
+        right.appendChild(btnAssign); right.appendChild(btnStart);
+        row.appendChild(left); row.appendChild(right); el.appendChild(row);
+      });
+    }
+
+    function assignRouteToCompany(companyId){
+      if(routes.length===0){ alert('まず路線を1本以上描いてください（左上のペン）。'); return; }
+      // シンプル: 最後に描いた路線を選択させる
+      const choices = routes.map(r=>r.id+' (頂点:'+r.polyline.getLatLngs().length+')').join('\n');
+      const pick = prompt('路線を選択してください:\n'+choices+'\n例: 1');
+      if(!pick) return; const id = parseInt(pick);
+      const route = routes.find(r=>r.id===id); if(!route) return alert('無効なID');
+      const comp = Companies.find(x=>x.id===companyId);
+      if(!comp.routes) comp.routes=[];
+      comp.routes.push(route);
+      log(comp.name+' にルート'+route.id+'を割当てました。');
+      updateRouteStyle(route, comp);
+    }
+
+    function updateRouteStyle(route, comp){
+      route.polyline.setStyle({color: comp ? '#2364a5' : '#2c7dce', weight:4});
+      route.polyline.bindTooltip((comp?comp.name+' - ':'')+'Route '+route.id);
+    }
+
+    function addVehicleToCompany(companyId){
+      const comp = Companies.find(x=>x.id===companyId);
+      if(!comp || !comp.routes || comp.routes.length===0){ alert('まず会社に路線を割り当ててください。'); return; }
+      // その会社の最初のルートを使用
+      const route = comp.routes[0];
+      const latlngs = route.polyline.getLatLngs();
+      const marker = L.circleMarker(latlngs[0],{radius:7}).addTo(map).bindTooltip(comp.name);
+      if(!comp.vehicles) comp.vehicles=[];
+      comp.vehicles.push({marker,route,progress:0});
+      log(comp.name+' に車両を追加しました。');
+    }
+
+    function calcRouteStops(poly){
+      // 簡易: 頂点を停留所とみなす
+      return poly.getLatLngs().map((p,i)=>({latlng:p,id:i}));
+    }
+
+    function revenueForRoute(route, fare){
+      const stops = calcRouteStops(route.polyline);
+      let servedPop = 0;
+      stops.forEach(s=>{
+        popPoints.forEach(pp=>{
+          const d = map.distance(s.latlng, pp.getLatLng());
+          if(d<=1200) servedPop += pp.pop; // 1.2km 範囲をカバー
+        });
+      });
+      // ざっくり: 利用者は周辺人口の0.01%が1便で乗る (簡易モデル)
+      const ridersPerRun = servedPop * 0.0001;
+      const revenuePerRun = ridersPerRun * fare;
+      return {servedPop,ridersPerRun,revenuePerRun};
+    }
+
+    function tickSimulation(){
+      // 車両を動かす
+      Companies.forEach(c=>{
+        if(!c.vehicles) return;
+        c.vehicles.forEach(v=>{
+          const latlngs = v.route.polyline.getLatLngs();
+          v.progress += 0.002 + (c.vehicleType==='Train'?0.004:0); // 速さ調整
+          if(v.progress>1) v.progress = 0;
+          // 線形補間
+          const pos = interpolateAlong(latlngs, v.progress);
+          if(pos) v.marker.setLatLng(pos);
+        });
+      });
+    }
+
+    function interpolateAlong(latlngs, t){
+      if(latlngs.length===0) return null;
+      // 合計距離を求め、tに対応する位置を見つける
+      let segLengths = [];
+      let total = 0;
+      for(let i=0;i<latlngs.length-1;i++){
+        const d = map.distance(latlngs[i], latlngs[i+1]); segLengths.push(d); total+=d;
+      }
+      if(total===0) return latlngs[0];
+      let target = t*total; let acc=0;
+      for(let i=0;i<segLengths.length;i++){
+        if(acc+segLengths[i]>=target){
+          const rem = target-acc; const ratio = rem/segLengths[i];
+          const a = latlngs[i], b = latlngs[i+1];
+          const lat = a.lat + (b.lat-a.lat)*ratio; const lng = a.lng + (b.lng-a.lng)*ratio;
+          return L.latLng(lat,lng);
+        }
+        acc += segLengths[i];
+      }
+      return latlngs[latlngs.length-1];
+    }
+
+    // draw 作成イベント
+    let routeIdCounter = 1;
+    map.on(L.Draw.Event.CREATED, function (event) {
+      const layer = event.layer; drawnItems.addLayer(layer);
+      if(event.layerType === 'polyline'){
+        const id = routeIdCounter++;
+        const polyline = layer;
+        routeLayer.addLayer(polyline);
+        const route = {id,polyline,stops:calcRouteStops(polyline)};
+        routes.push(route);
+        log('路線を作成: id='+id+' 頂点数='+route.stops.length);
+        // ルートを会社へ割当を促す
+        const ask = confirm('ルートを会社に割り当てますか？ (OK: 割当, Cancel: 後で)');
+        if(ask && Companies.length>0){
+          const compNames = Companies.map(c=>c.id+':'+c.name).join('\n');
+          const pick = prompt('会社を選んでください:\n'+compNames+'\n例: 1');
+          if(pick){ const cid=parseInt(pick); const comp = Companies.find(x=>x.id===cid); if(comp){ comp.routes = comp.routes||[]; comp.routes.push(route); updateRouteStyle(route, comp); log(comp.name+'にルート割当'); }}
+        }
+      }
+    });
+
+    // 会社作成
+    document.getElementById('createCompany').onclick = ()=>{
+      const name = document.getElementById('companyName').value || 'Company';
+      const vtype = document.getElementById('vehicleType').value;
+      const fare = parseFloat(document.getElementById('fare').value) || 1.0;
+      const id = Companies.length+1;
+      Companies.push({id,name,vehicleType:vtype,fare,routes:[],vehicles:[]});
+      addCompanyToUI(); log('会社作成: '+name);
+    }
+
+    // ルート全消去
+    document.getElementById('clearRoutes').onclick = ()=>{
+      if(!confirm('本当に全ルートを削除しますか？')) return; routes.forEach(r=>{ if(r.polyline) map.removeLayer(r.polyline); }); routes=[]; log('全ルートを削除');
+    }
+
+    // シミュレーション切替
+    document.getElementById('toggleSim').onclick = ()=>{
+      simRunning = !simRunning; document.getElementById('toggleSim').textContent = simRunning? '⏸ 運行停止':'▶ 運行開始';
+      if(simRunning){ simTimer = setInterval(()=>{ tickSimulation(); computeEconomy(); }, 60); } else { clearInterval(simTimer); simTimer=null; }
+    }
+
+    function computeEconomy(){
+      // 各会社の収入をざっくり計算して表示
+      Companies.forEach(c=>{
+        let sumRevenue = 0; let sumRiders=0; let sumServed = 0;
+        (c.routes||[]).forEach(r=>{
+          const res = revenueForRoute(r, c.fare);
+          sumRevenue += res.revenuePerRun; sumRiders+=res.ridersPerRun; sumServed+=res.servedPop;
+        });
+        // 表示更新
+        c._summary = {sumRevenue,sumRiders,sumServed};
+      });
+      // UI 更新
+      addCompanyToUI();
+      // 会社一覧下に簡易サマリ追加
+      const companiesDiv = document.getElementById('companies');
+      Companies.forEach(c=>{
+        const p = document.createElement('div'); p.className='small';
+        const s = c._summary || {sumRevenue:0,sumRiders:0,sumServed:0};
+        p.textContent = '推定周辺人口:'+Math.round(s.sumServed)+'人 / 便当たり利用者:'+ (s.sumRiders.toFixed(2)) + '人 / 便収入:'+ (s.sumRevenue.toFixed(2));
+        companiesDiv.appendChild(p);
+      });
+    }
+
+    // 編集イベントでルート更新
+    map.on('draw:edited', function(e){ e.layers.eachLayer(layer=>{ const r = routes.find(x=>x.polyline===layer); if(r){ r.stops = calcRouteStops(layer); log('ルート'+r.id+'を編集'); } }); });
+    map.on('draw:deleted', function(e){ e.layers.eachLayer(layer=>{ const idx = routes.findIndex(x=>x.polyline===layer); if(idx>=0){ log('ルート'+routes[idx].id+'が削除されました'); routes.splice(idx,1); } }); });
+
+    // 初期会社を1つ作る
+    Companies.push({id:1,name:'YMS Transit',vehicleType:'Bus',fare:1.0,routes:[],vehicles:[]}); addCompanyToUI();
+    log('プロトタイプ起動');
+  </script>
+</body>
+</html>

@@ -1,206 +1,214 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>交通会社経営ゲーム 完全版3</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>交通会社経営ゲーム プロトタイプ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",Arial,sans-serif;}
-.tabs{position:absolute;left:10px;top:10px;z-index:1001;display:flex;}
-.tab{padding:6px 12px;background:rgba(255,255,255,0.9);border-radius:6px 6px 0 0;margin-right:2px;cursor:pointer;font-weight:bold;}
-.tab.active{background:#2364a5;color:white;}
-.tabContent{position:absolute;left:10px;top:40px;background:rgba(255,255,255,0.95);border-radius:8px;padding:8px;width:300px;font-size:13px;z-index:1000;}
-.btn{padding:4px 8px;margin:2px 0;border:none;border-radius:4px;cursor:pointer;background:#2c7dce;color:white;width:100%;}
-.btn.active{background:#2364a5;}
-.hud{position:absolute;right:10px;top:10px;width:220px;background:rgba(255,255,255,0.95);border-radius:8px;padding:6px;font-size:13px;z-index:1000;}
-input[type=color]{width:100%;margin-bottom:4px;}
-#editPanel{margin-top:4px;}
+html,body,#map { height:100%; margin:0; padding:0; font-family:sans-serif;}
+#map { position:absolute; top:0; left:0; right:0; bottom:0; }
+
+.hud { position:absolute; top:10px; right:10px; width:220px; background:rgba(255,255,255,0.95); padding:10px; border-radius:8px; font-size:13px; z-index:1000; }
+.toolbox { position:absolute; left:10px; bottom:10px; width:220px; background:rgba(255,255,255,0.95); padding:10px; border-radius:8px; font-size:13px; z-index:1000; }
+.toolbox button { margin:2px 0; width:100%; }
+.tab { display:flex; margin-bottom:6px; }
+.tab button { flex:1; padding:6px; cursor:pointer; border:none; border-radius:4px; margin-right:2px; }
+.tab button.active { background:#2364a5; color:white; }
+.infoBox { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(255,255,255,0.9); padding:4px 10px; border-radius:6px; font-size:13px; z-index:1000; }
+
+.popup-btn { display:inline-block; padding:4px 6px; margin-top:4px; border-radius:4px; background:#2c7dce; color:white; cursor:pointer; text-decoration:none; font-size:12px; }
 </style>
 </head>
 <body>
+
 <div id="map"></div>
-
-<div class="tabs">
-  <div class="tab active" data-tab="buildTab">駅・線路作成</div>
-  <div class="tab" data-tab="routeTab">路線管理</div>
-</div>
-
-<div id="buildTab" class="tabContent">
-  <button class="btn" id="btnPlaceStation">駅設置モード</button>
-  <button class="btn" id="btnLayTrack">線路敷設モード</button>
-  <button class="btn" id="btnEditTrack">線路折れ曲げ編集</button>
-  <button class="btn" id="btnAddStationOnTrack">線路上駅追加</button>
-</div>
-
-<div id="routeTab" class="tabContent" style="display:none">
-  <input type="text" id="routeName" placeholder="路線名">
-  <input type="color" id="routeColor" value="#e67e22">
-  <button class="btn" id="btnRouteMode">路線作成モード</button>
-  <button class="btn" id="btnRouteRegister" disabled>路線登録</button>
-  <div id="editPanel"></div>
-</div>
 
 <div class="hud" id="hud">
   <div>会社名: <span id="compName">YMS Transit</span></div>
   <div>資金: <span id="funds">¥10000000</span></div>
-  <div>駅数: <span id="stationCount">0</span></div>
   <div>路線数: <span id="routeCount">0</span></div>
+  <div>駅数: <span id="stationCount">0</span></div>
 </div>
+
+<div class="toolbox">
+  <div class="tab">
+    <button id="tabBuild" class="active">駅・線路作成</button>
+    <button id="tabManage">路線管理</button>
+  </div>
+
+  <!-- 作成タブ -->
+  <div id="tabBuildContent">
+    <button id="btnPlaceStation">駅設置モード</button>
+    <button id="btnConnect">線路敷設モード</button>
+    <button id="btnEditLine">線路編集モード</button>
+  </div>
+
+  <!-- 管理タブ -->
+  <div id="tabManageContent" style="display:none;">
+    <button id="btnRouteMode">路線作成モード</button>
+    <div style="margin-top:4px;">路線色: <input type="color" id="routeColor" value="#2364a5"/></div>
+    <button id="btnRouteRegister" disabled>路線登録</button>
+    <div id="routeCreateInfo" style="font-size:12px; margin-top:2px;">選択駅: なし</div>
+    <button id="btnAddStationOnRoute">路線上に駅追加</button>
+  </div>
+</div>
+
+<div class="infoBox" id="infoBox">東京全域マップ</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const map = L.map('map').setView([35.681236,139.767125],10);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
-  attribution:'&copy; OSM & CartoDB', maxZoom:19
-}).addTo(map);
+/************ 初期データ ************/
+const Company = {
+  funds:10000000,
+  stations:{},
+  routes:[],
+  nextStationId:1,
+  nextRouteId:1
+};
 
+const COSTS = {stationBuild:200000, routeBuildPerKm:150000};
+
+/************ マップ ************/
+const map = L.map('map').setView([35.681236,139.767125], 10);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 const stationLayer = L.layerGroup().addTo(map);
-const trackLayer = L.layerGroup().addTo(map);
-const vehicleLayer = L.layerGroup().addTo(map);
-const vertexLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
 
-const Company={funds:10000000,stations:{},routes:[],nextStationId:1,nextRouteId:1};
-
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.onclick=()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    document.querySelectorAll('.tabContent').forEach(c=>c.style.display='none');
-    tab.classList.add('active');
-    document.getElementById(tab.dataset.tab).style.display='block';
-  };
-});
-
+/************ HUD更新 ************/
 function updateHUD(){
-  document.getElementById('funds').innerText='¥'+Company.funds.toLocaleString();
-  document.getElementById('stationCount').innerText=Object.keys(Company.stations).length;
-  document.getElementById('routeCount').innerText=Company.routes.length;
+  document.getElementById('funds').textContent = '¥'+Math.round(Company.funds).toLocaleString();
+  document.getElementById('stationCount').textContent = Object.keys(Company.stations).length;
+  document.getElementById('routeCount').textContent = Company.routes.length;
 }
 
-let mode=null,tempTrackPoints=[],tempRouteStations=[],editingPolyline=null;
-
-// ------------------- モードボタン -------------------
-function setActiveButton(id,tab){
-  document.querySelectorAll(`#${tab} .btn`).forEach(b=>b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+/************ タブ切替 ************/
+const tabBuild = document.getElementById('tabBuild');
+const tabManage = document.getElementById('tabManage');
+const tabBuildContent = document.getElementById('tabBuildContent');
+const tabManageContent = document.getElementById('tabManageContent');
+tabBuild.onclick = ()=>{
+  tabBuild.classList.add('active');
+  tabManage.classList.remove('active');
+  tabBuildContent.style.display='block';
+  tabManageContent.style.display='none';
+}
+tabManage.onclick = ()=>{
+  tabManage.classList.add('active');
+  tabBuild.classList.remove('active');
+  tabBuildContent.style.display='none';
+  tabManageContent.style.display='block';
 }
 
-document.getElementById('btnPlaceStation').onclick=()=>{mode='station'; setActiveButton('btnPlaceStation','buildTab');};
-document.getElementById('btnLayTrack').onclick=()=>{mode='layTrack'; tempTrackPoints=[]; setActiveButton('btnLayTrack','buildTab');};
-document.getElementById('btnEditTrack').onclick=()=>{mode='editTrack'; editingPolyline=null; vertexLayer.clearLayers(); setActiveButton('btnEditTrack','buildTab');};
-document.getElementById('btnAddStationOnTrack').onclick=()=>{mode='stationOnTrack'; setActiveButton('btnAddStationOnTrack','buildTab');};
+/************ モード ************/
+let mode=null; // 'station','connect','editLine','route','addStation'
+let selectedStation=null;
+let tempLine=null;
+let tempRouteStations=[];
 
-document.getElementById('btnRouteMode').onclick=()=>{mode='route'; tempRouteStations=[]; setActiveButton('btnRouteMode','routeTab');};
-document.getElementById('btnRouteRegister').onclick=registerRoute;
-
-// ------------------- 駅設置 -------------------
-map.on('click',e=>{
+/************ 駅設置 ************/
+document.getElementById('btnPlaceStation').onclick = ()=>{ mode='station'; updateInfo('駅設置モード'); }
+map.on('click', function(e){
   if(mode==='station'){
-    if(Company.funds<200000){alert('資金不足'); return;}
-    Company.funds-=200000;
-    const id=Company.nextStationId++;
-    const marker=L.circleMarker(e.latlng,{radius:8,color:'#2c7dce',fillColor:'#fff',fillOpacity:1,weight:2,draggable:true}).addTo(stationLayer);
-    marker.on('click',()=>onStationClick(id));
-    marker.dragging=new L.Handler.MarkerDrag(marker); marker.dragging.enable();
+    if(Company.funds<COSTS.stationBuild){ alert('資金不足'); return;}
+    Company.funds-=COSTS.stationBuild;
+    const id = Company.nextStationId++;
+    const marker = L.circleMarker(e.latlng,{radius:8,color:'#2c7dce',fill:true,fillOpacity:1,weight:2, draggable:true}).addTo(stationLayer);
+    marker.on('click', ()=>stationClick(id));
+    marker.on('drag', ()=>updateHUD());
     Company.stations[id]={id,latlng:e.latlng,marker};
     updateHUD();
-  } else if(mode==='layTrack'){
-    tempTrackPoints.push(e.latlng);
-    if(tempTrackPoints.length>1){
-      if(Company.funds<150000){alert('資金不足'); tempTrackPoints.pop(); return;}
-      Company.funds-=150000;
-      L.polyline(tempTrackPoints,{color:'#2364a5',weight:5,opacity:0.7}).addTo(trackLayer);
-    }
-  } else if(mode==='stationOnTrack'){
-    let nearest=null,minDist=Infinity;
-    trackLayer.eachLayer(line=>{
-      const pts=line.getLatLngs();
-      pts.forEach(p=>{const d=map.distance(e.latlng,p); if(d<minDist){minDist=d; nearest=p;}});
-    });
-    if(nearest){
-      const id=Company.nextStationId++;
-      const marker=L.circleMarker(nearest,{radius:8,color:'#e74c3c',fillColor:'#fff',fillOpacity:1,weight:2,draggable:true}).addTo(stationLayer);
-      marker.on('click',()=>onStationClick(id));
-      marker.dragging=new L.Handler.MarkerDrag(marker); marker.dragging.enable();
-      Company.stations[id]={id,latlng:nearest,marker};
-      updateHUD();
-    }
   }
 });
 
-// ------------------- 路線作成 -------------------
-function onStationClick(id){
-  if(mode==='route'){
-    const st=Company.stations[id];
-    tempRouteStations.push(st);
-    document.getElementById('btnRouteRegister').disabled=false;
-  }
-}
-function registerRoute(){
-  if(tempRouteStations.length<2){alert('駅2つ以上'); return;}
-  const id=Company.nextRouteId++;
-  const color=document.getElementById('routeColor').value;
-  const latlngs=tempRouteStations.map(s=>s.latlng);
-  const poly=L.polyline(latlngs,{color,weight:5,opacity:0.9}).addTo(trackLayer);
-  poly.on('click',()=>editRoute(id));
-  Company.routes.push({id,name:document.getElementById('routeName').value||`Route#${id}`,stations:tempRouteStations.map(s=>s.id),polyline:poly,color});
-  tempRouteStations=[];
-  document.getElementById('btnRouteRegister').disabled=true;
-  updateHUD();
-  animateVehicle(poly);
-}
-
-// ------------------- 路線編集 -------------------
-function editRoute(routeId){
-  const route=Company.routes.find(r=>r.id===routeId);
-  if(!route) return;
-  editingPolyline=route.polyline;
-  vertexLayer.clearLayers();
-  const latlngs=editingPolyline.getLatLngs();
-  latlngs.forEach((p,i)=>{
-    const v=L.circleMarker(p,{radius:6,color:'orange',fillColor:'#fff',weight:2,fillOpacity:1,draggable:true}).addTo(vertexLayer);
-    v.on('drag',e=>{
-      latlngs[i]=e.latlng;
-      editingPolyline.setLatLngs(latlngs);
-    });
-    v.on('dragend',()=>{route.polyline.setLatLngs(latlngs);});
-    v.dragging=new L.Handler.MarkerDrag(v); v.dragging.enable();
-  });
-
-  // 編集パネル
-  const panel=document.getElementById('editPanel');
-  panel.innerHTML=`
-    <input type="text" id="editRouteName" value="${route.name}" placeholder="路線名">
-    <input type="color" id="editRouteColor" value="${route.color}">
-    <button class="btn" id="btnUpdateRoute">更新</button>
-    <button class="btn" id="btnDeleteRoute">削除</button>
-  `;
-  document.getElementById('btnUpdateRoute').onclick=()=>{
-    route.name=document.getElementById('editRouteName').value;
-    route.color=document.getElementById('editRouteColor').value;
-    route.polyline.setStyle({color:route.color});
-    panel.innerHTML='';
-  };
-  document.getElementById('btnDeleteRoute').onclick=()=>{
-    trackLayer.removeLayer(route.polyline);
-    Company.routes=Company.routes.filter(r=>r.id!==route.id);
-    panel.innerHTML='';
+function stationClick(id){
+  if(mode==='connect'){
+    if(!selectedStation){ selectedStation=id; updateInfo(`1つ目駅#${id}選択`); return;}
+    if(selectedStation===id){ selectedStation=null; updateInfo('接続キャンセル'); return;}
+    // 接続
+    const a = Company.stations[selectedStation];
+    const b = Company.stations[id];
+    const dist = map.distance(a.latlng,b.latlng)/1000;
+    const cost = Math.round(COSTS.routeBuildPerKm*dist);
+    if(Company.funds<cost){ alert('資金不足'); selectedStation=null; return;}
+    if(!confirm(`駅#${a.id}↔駅#${b.id} 接続しますか？\n距離:${dist.toFixed(2)}km 建設費:${cost}`)){ selectedStation=null; return;}
+    Company.funds-=cost;
+    const poly = L.polyline([a.latlng,b.latlng],{color:'#888',weight:4,opacity:0.6}).addTo(routeLayer);
+    Company.routes.push({id:Company.nextRouteId++,stations:[a.id,b.id],polyline:poly,color:'#888',vehicles:[]});
+    selectedStation=null;
     updateHUD();
-  };
+  }else if(mode==='route'){
+    const st = Company.stations[id];
+    tempRouteStations.push(st);
+    if(tempLine) map.removeLayer(tempLine);
+    tempLine = L.polyline(tempRouteStations.map(s=>s.latlng),{color:document.getElementById('routeColor').value,weight:4,opacity:0.8}).addTo(routeLayer);
+    updateRouteInfo();
+  }
 }
 
-// ------------------- 車両アニメ -------------------
-function animateVehicle(polyline){
-  const vehicle=L.circleMarker(polyline.getLatLngs()[0],{radius:6,color:'red',fillColor:'red',fillOpacity:1}).addTo(vehicleLayer);
-  let idx=0;
-  function move(){
-    const pts=polyline.getLatLngs();
-    idx=(idx+1)%pts.length;
-    vehicle.setLatLng(pts[idx]);
-    setTimeout(move,500);
-  }
-  move();
+/************ 線路敷設モード ************/
+document.getElementById('btnConnect').onclick = ()=>{ mode='connect'; updateInfo('線路敷設モード'); }
+
+/************ 線路編集モード ************/
+document.getElementById('btnEditLine').onclick = ()=>{ mode='editLine'; updateInfo('線路編集モード'); }
+
+/************ 路線作成モード ************/
+document.getElementById('btnRouteMode').onclick = ()=>{ mode='route'; updateInfo('路線作成モード'); tempRouteStations=[]; if(tempLine){map.removeLayer(tempLine); tempLine=null;} updateRouteInfo(); }
+
+function updateRouteInfo(){
+  const el = document.getElementById('routeCreateInfo');
+  if(tempRouteStations.length>0) el.textContent = '選択駅: '+tempRouteStations.map(s=>s.id).join(' → ');
+  else el.textContent='選択駅: なし';
+  document.getElementById('btnRouteRegister').disabled = tempRouteStations.length<2;
 }
+
+/************ 路線登録 ************/
+document.getElementById('btnRouteRegister').onclick = ()=>{
+  if(tempRouteStations.length<2) return alert('駅2つ以上選択');
+  const color = document.getElementById('routeColor').value;
+  const latlngs = tempRouteStations.map(s=>s.latlng);
+  const poly = L.polyline(latlngs,{color:color,weight:5,opacity:0.9}).addTo(routeLayer);
+  const route = {id:Company.nextRouteId++,stations:tempRouteStations.map(s=>s.id),polyline:poly,color:color,vehicles:[]};
+  Company.routes.push(route);
+  tempRouteStations=[]; if(tempLine){map.removeLayer(tempLine); tempLine=null;}
+  updateRouteInfo(); updateHUD();
+  alert('路線登録完了');
+}
+
+/************ 路線上駅追加 ************/
+document.getElementById('btnAddStationOnRoute').onclick = ()=>{ mode='addStation'; updateInfo('路線上駅追加モード'); }
+
+map.on('click', function(e){
+  if(mode==='addStation'){
+    // クリック地点に最も近い既存線路を検索
+    let closest=null,minDist=Infinity;
+    Company.routes.forEach(route=>{
+      const latlngs = route.polyline.getLatLngs();
+      for(let i=0;i<latlngs.length-1;i++){
+        const d = L.LineUtil.pointToSegmentDistance(map.latLngToLayerPoint(e.latlng), map.latLngToLayerPoint(latlngs[i]), map.latLngToLayerPoint(latlngs[i+1]));
+        if(d<minDist){ minDist=d; closest={route:route,index:i,latlng:e.latlng}; }
+      }
+    });
+    if(!closest){ alert('線路上をクリックしてください'); return;}
+    if(Company.funds<COSTS.stationBuild){ alert('資金不足'); return;}
+    Company.funds-=COSTS.stationBuild;
+    const id = Company.nextStationId++;
+    const marker = L.circleMarker(closest.latlng,{radius:8,color:'#2c7dce',fill:true,fillOpacity:1,weight:2, draggable:true}).addTo(stationLayer);
+    marker.on('click', ()=>stationClick(id));
+    marker.on('drag', ()=>updateHUD());
+    Company.stations[id]={id,latlng:closest.latlng,marker};
+    // 線路分割
+    const route = closest.route;
+    const latlngs = route.polyline.getLatLngs();
+    latlngs.splice(closest.index+1,0,closest.latlng);
+    route.polyline.setLatLngs(latlngs);
+    route.stations.splice(closest.index+1,0,id);
+    updateHUD();
+  }
+});
+
+/************ 情報更新 ************/
+function updateInfo(msg){ document.getElementById('infoBox').textContent = msg; }
 
 updateHUD();
 </script>

@@ -3,132 +3,154 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>交通会社経営ゲーム プロトタイプ（東京全域）</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<title>交通会社経営ゲーム タブ版</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",Arial,sans-serif;}
-  #map{position:absolute;left:0;top:0;right:0;bottom:0;}
-  .hud{position:absolute;right:16px;top:16px;width:240px;background:rgba(255,255,255,0.94);border-radius:10px;padding:10px;box-shadow:0 6px 18px rgba(0,0,0,0.12);font-size:13px;z-index:1000;}
-  .toolbox{position:absolute;left:18px;bottom:18px;background:rgba(255,255,255,0.96);border-radius:12px;padding:10px;width:220px;box-shadow:0 8px 20px rgba(0,0,0,0.12);font-size:13px;z-index:1000;}
-  .infoBox{position:absolute;left:50%;top:8px;transform:translateX(-50%);background:rgba(255,255,255,0.9);padding:6px 10px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:1000;}
-  .btn{padding:4px 6px;margin:2px;border-radius:5px;background:#2c7dce;color:white;border:none;cursor:pointer;font-size:12px;}
-  .btn.secondary{background:#6c757d;}
-  .small{font-size:12px;color:#333;}
-  .station-icon div{width:16px;height:16px;background:#2c7dce;border-radius:50%;border:2px solid white;box-shadow:0 0 3px rgba(0,0,0,0.5);}
+html,body,#map { height:100%; margin:0; padding:0; font-family:"Noto Sans JP",Arial,sans-serif; }
+/* タブUI */
+.tabs { position:absolute; left:10px; top:10px; z-index:1001; display:flex; }
+.tab { padding:6px 12px; background:rgba(255,255,255,0.9); border-radius:6px 6px 0 0; margin-right:2px; cursor:pointer; font-weight:bold; }
+.tab.active { background:#2364a5; color:white; }
+/* コンテンツ切替 */
+.tabContent { position:absolute; left:10px; top:40px; background:rgba(255,255,255,0.95); border-radius:8px; padding:8px; width:250px; font-size:13px; z-index:1000; }
+/* ボタン */
+.btn { padding:4px 8px; margin:2px 0; border:none; border-radius:4px; cursor:pointer; background:#2c7dce; color:white; width:100%; }
+.btn.active { background:#2364a5; }
+/* HUD */
+.hud { position:absolute; right:10px; top:10px; width:220px; background:rgba(255,255,255,0.95); border-radius:8px; padding:6px; font-size:13px; z-index:1000;}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
+<!-- タブ -->
+<div class="tabs">
+  <div class="tab active" data-tab="buildTab">駅・線路作成</div>
+  <div class="tab" data-tab="routeTab">路線管理</div>
+</div>
+
+<!-- タブ内容 -->
+<div id="buildTab" class="tabContent">
+  <button class="btn" id="btnPlaceStation">駅設置モード</button>
+  <button class="btn" id="btnLayTrack">線路敷設モード</button>
+  <button class="btn" id="btnAddStationOnTrack">線路上に駅追加</button>
+</div>
+
+<div id="routeTab" class="tabContent" style="display:none">
+  <button class="btn" id="btnRouteMode">路線作成モード</button>
+  <button class="btn" id="btnRouteRegister" disabled>路線登録</button>
+</div>
+
+<!-- HUD -->
 <div class="hud" id="hud">
-  <h3>会社ダッシュボード</h3>
+  <div>会社名: <span id="compName">YMS Transit</span></div>
   <div>資金: <span id="funds">¥10000000</span></div>
   <div>駅数: <span id="stationCount">0</span></div>
   <div>路線数: <span id="routeCount">0</span></div>
 </div>
 
-<div class="infoBox" id="infoBox">東京全域マップ</div>
-
-<div class="toolbox">
-  <button class="btn" id="btnStation">駅設置モード</button>
-  <button class="btn secondary" id="btnRoute">路線作成モード</button>
-  <button class="btn" id="btnRegister">路線登録</button>
-  <select id="routeColor" style="margin-top:4px;width:100%;"><option value="#2364a5">青</option><option value="#e67e22">オレンジ</option><option value="#27ae60">緑</option></select>
-  <div id="routeInfo" class="small">選択駅: なし</div>
-</div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// ------------------- マップ初期化 -------------------
 const map = L.map('map').setView([35.681236,139.767125], 10);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
-  attribution:'&copy; OpenStreetMap contributors & CartoDB',
-  maxZoom:19
+  attribution:'&copy; OSM & CartoDB', maxZoom:19
 }).addTo(map);
+const stationLayer = L.layerGroup().addTo(map);
+const trackLayer = L.layerGroup().addTo(map);
 
-let stations=[], routes=[];
-let mode = null;
-let tempRouteStations = [], tempRouteLine = null;
-
-// HUD更新
-function updateHUD(){
-  document.getElementById('stationCount').innerText = stations.length;
-  document.getElementById('routeCount').innerText = routes.length;
-  if(tempRouteStations.length){
-    document.getElementById('routeInfo').innerText='選択駅: '+tempRouteStations.map(s=>s.id).join(' → ');
-    document.getElementById('btnRegister').disabled=false;
-  } else {
-    document.getElementById('routeInfo').innerText='選択駅: なし';
-    document.getElementById('btnRegister').disabled=true;
-  }
-}
-
-// 駅設置モードボタン
-document.getElementById('btnStation').onclick = ()=>{
-  mode='station';
-  map.getContainer().style.cursor='crosshair';
-  tempRouteStations=[];
-  if(tempRouteLine){ map.removeLayer(tempRouteLine); tempRouteLine=null; }
-  updateHUD();
+// ------------------- データ構造 -------------------
+const Company = {
+  funds:10000000,
+  stations:{}, // id -> {id, latlng, marker}
+  routes:[],   // {id, name, stations:[id], polyline}
+  nextStationId:1, nextRouteId:1
 };
 
-// 路線作成モードボタン
-document.getElementById('btnRoute').onclick = ()=>{
-  mode='route';
-  tempRouteStations=[];
-  if(tempRouteLine){ map.removeLayer(tempRouteLine); tempRouteLine=null; }
-  map.getContainer().style.cursor='pointer';
-  updateHUD();
-};
-
-// 路線登録
-document.getElementById('btnRegister').onclick = ()=>{
-  if(tempRouteStations.length<2) return alert('駅を2つ以上選択してください');
-  const color = document.getElementById('routeColor').value;
-  const latlngs = tempRouteStations.map(s=>s.marker.getLatLng());
-  const poly = L.polyline(latlngs,{color:color,weight:5}).addTo(map);
-  routes.push({stations:tempRouteStations.map(s=>s.id),polyline:poly,color:color});
-  tempRouteStations=[];
-  if(tempRouteLine){ map.removeLayer(tempRouteLine); tempRouteLine=null; }
-  updateHUD();
-};
-
-// 駅設置
-map.on('click',(e)=>{
-  if(mode==='station'){
-    const marker = L.marker(e.latlng,{
-      draggable:true,
-      icon:L.divIcon({className:'station-icon',html:'<div></div>',iconSize:[16,16],iconAnchor:[8,8]})
-    }).addTo(map);
-    marker.stationId=stations.length+1;
-    marker.on('click',()=> handleStationClick(marker));
-    stations.push({id:marker.stationId, marker:marker});
-    updateHUD();
-  }
+// ------------------- タブ切替 -------------------
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tabContent').forEach(c=>c.style.display='none');
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).style.display='block';
+  };
 });
 
-// 駅クリック
-function handleStationClick(marker){
-  if(mode==='route'){
-    if(!tempRouteStations.find(s=>s.id===marker.stationId)){
-      tempRouteStations.push({id:marker.stationId, marker:marker});
-      if(tempRouteLine) map.removeLayer(tempRouteLine);
-      const latlngs = tempRouteStations.map(s=>s.marker.getLatLng());
-      tempRouteLine = L.polyline(latlngs,{color:'#888',weight:3,opacity:0.5,dashArray:'5,5'}).addTo(map);
-      updateHUD();
+// ------------------- HUD更新 -------------------
+function updateHUD(){
+  document.getElementById('funds').innerText = '¥'+Company.funds.toLocaleString();
+  document.getElementById('stationCount').innerText = Object.keys(Company.stations).length;
+  document.getElementById('routeCount').innerText = Company.routes.length;
+}
+
+// ------------------- モード -------------------
+let mode = null;
+let tempTrackPoints = []; // 線路敷設用
+let tempRouteStations = []; // 路線作成用
+
+// ------------------- 駅設置 -------------------
+document.getElementById('btnPlaceStation').onclick=()=> {
+  mode='station';
+  document.querySelectorAll('#buildTab .btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btnPlaceStation').classList.add('active');
+};
+map.on('click', e=>{
+  if(mode==='station'){
+    if(Company.funds<200000){alert('資金不足'); return;}
+    Company.funds-=200000;
+    const id=Company.nextStationId++;
+    const marker=L.circleMarker(e.latlng,{radius:8,color:'#2c7dce',fillColor:'#fff',fillOpacity:1,weight:2, draggable:true}).addTo(stationLayer);
+    marker.on('click',()=>onStationClick(id));
+    Company.stations[id]={id,latlng:e.latlng,marker};
+    updateHUD();
+  }else if(mode==='layTrack'){
+    // 線路敷設モード
+    tempTrackPoints.push(e.latlng);
+    if(tempTrackPoints.length>1){
+      if(Company.funds<150000){alert('資金不足'); tempTrackPoints.pop(); return;}
+      Company.funds-=150000;
+      L.polyline(tempTrackPoints,{color:'#2364a5',weight:5,opacity:0.7}).addTo(trackLayer);
     }
   }
+});
+
+// ------------------- 線路敷設 -------------------
+document.getElementById('btnLayTrack').onclick=()=>{
+  mode='layTrack';
+  tempTrackPoints=[];
+  document.querySelectorAll('#buildTab .btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btnLayTrack').classList.add('active');
+};
+
+// ------------------- 路線作成 -------------------
+document.getElementById('btnRouteMode').onclick=()=>{
+  mode='route';
+  tempRouteStations=[];
+  document.querySelectorAll('#routeTab .btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btnRouteMode').classList.add('active');
+};
+document.getElementById('btnRouteRegister').onclick=()=>{
+  if(tempRouteStations.length<2){alert('駅2つ以上選択'); return;}
+  const id=Company.nextRouteId++;
+  const latlngs=tempRouteStations.map(s=>s.latlng);
+  const poly=L.polyline(latlngs,{color:'#e67e22',weight:5,opacity:0.9}).addTo(trackLayer);
+  Company.routes.push({id,name:`Route#${id}`,stations:tempRouteStations.map(s=>s.id),polyline:poly});
+  tempRouteStations=[];
+  updateHUD();
+  alert('路線登録完了');
+};
+
+// ------------------- 駅クリック（路線作成用） -------------------
+function onStationClick(id){
+  if(mode==='route'){
+    const st=Company.stations[id];
+    tempRouteStations.push(st);
+    document.getElementById('btnRouteRegister').disabled=false;
+  }
 }
 
-// 初期サンプル駅
-const samplePoints=[
-  [35.6895,139.6917],[35.681236,139.767125],[35.658034,139.701636]
-];
-samplePoints.forEach((p,i)=>{
-  const marker = L.marker(p,{draggable:true,icon:L.divIcon({className:'station-icon',html:'<div></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map);
-  marker.stationId=i+1;
-  marker.on('click',()=>handleStationClick(marker));
-  stations.push({id:marker.stationId,marker:marker});
-});
+// ------------------- 初期HUD更新 -------------------
 updateHUD();
 </script>
 </body>

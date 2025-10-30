@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>交通会社経営ゲーム 完全版</title>
+<title>交通会社経営ゲーム 完全版2</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
 html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",Arial,sans-serif;}
 .tabs{position:absolute;left:10px;top:10px;z-index:1001;display:flex;}
 .tab{padding:6px 12px;background:rgba(255,255,255,0.9);border-radius:6px 6px 0 0;margin-right:2px;cursor:pointer;font-weight:bold;}
 .tab.active{background:#2364a5;color:white;}
-.tabContent{position:absolute;left:10px;top:40px;background:rgba(255,255,255,0.95);border-radius:8px;padding:8px;width:280px;font-size:13px;z-index:1000;}
+.tabContent{position:absolute;left:10px;top:40px;background:rgba(255,255,255,0.95);border-radius:8px;padding:8px;width:300px;font-size:13px;z-index:1000;}
 .btn{padding:4px 8px;margin:2px 0;border:none;border-radius:4px;cursor:pointer;background:#2c7dce;color:white;width:100%;}
 .btn.active{background:#2364a5;}
 .hud{position:absolute;right:10px;top:10px;width:220px;background:rgba(255,255,255,0.95);border-radius:8px;padding:6px;font-size:13px;z-index:1000;}
+input[type=color]{width:100%;margin-bottom:4px;}
 </style>
 </head>
 <body>
@@ -28,12 +29,12 @@ html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",Arial,s
   <button class="btn" id="btnPlaceStation">駅設置モード</button>
   <button class="btn" id="btnLayTrack">線路敷設モード</button>
   <button class="btn" id="btnEditTrack">線路折れ曲げ編集</button>
-  <button class="btn" id="btnAddStationOnTrack">線路上に駅追加</button>
+  <button class="btn" id="btnAddStationOnTrack">線路上駅追加</button>
 </div>
 
 <div id="routeTab" class="tabContent" style="display:none">
-  <input type="text" id="routeName" placeholder="路線名" style="width:100%;margin-bottom:4px;">
-  <input type="color" id="routeColor" value="#e67e22" style="width:100%;margin-bottom:4px;">
+  <input type="text" id="routeName" placeholder="路線名">
+  <input type="color" id="routeColor" value="#e67e22">
   <button class="btn" id="btnRouteMode">路線作成モード</button>
   <button class="btn" id="btnRouteRegister" disabled>路線登録</button>
 </div>
@@ -55,6 +56,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
 const stationLayer = L.layerGroup().addTo(map);
 const trackLayer = L.layerGroup().addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
+const vertexLayer = L.layerGroup().addTo(map);
 
 // ------------------- データ -------------------
 const Company={funds:10000000,stations:{},routes:[],nextStationId:1,nextRouteId:1};
@@ -85,26 +87,6 @@ document.getElementById('btnPlaceStation').onclick=()=>{
   document.querySelectorAll('#buildTab .btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btnPlaceStation').classList.add('active');
 };
-map.on('click',e=>{
-  if(mode==='station'){
-    if(Company.funds<200000){alert('資金不足'); return;}
-    Company.funds-=200000;
-    const id=Company.nextStationId++;
-    const marker=L.circleMarker(e.latlng,{radius:8,color:'#2c7dce',fillColor:'#fff',fillOpacity:1,weight:2}).addTo(stationLayer);
-    marker.on('click',()=>onStationClick(id));
-    marker.dragging=new L.Handler.MarkerDrag(marker);
-    marker.dragging.enable();
-    Company.stations[id]={id,latlng:e.latlng,marker};
-    updateHUD();
-  } else if(mode==='layTrack'){
-    tempTrackPoints.push(e.latlng);
-    if(tempTrackPoints.length>1){
-      if(Company.funds<150000){alert('資金不足'); tempTrackPoints.pop(); return;}
-      Company.funds-=150000;
-      L.polyline(tempTrackPoints,{color:'#2364a5',weight:5,opacity:0.7}).addTo(trackLayer);
-    }
-  }
-});
 
 // ------------------- 線路敷設 -------------------
 document.getElementById('btnLayTrack').onclick=()=>{
@@ -119,14 +101,15 @@ document.getElementById('btnEditTrack').onclick=()=>{
   document.querySelectorAll('#buildTab .btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btnEditTrack').classList.add('active');
   editingPolyline=null;
+  vertexLayer.clearLayers();
 };
-trackLayer.on('click',e=>{
-  if(mode==='editTrack'){
-    // クリックした線路を選択
-    editingPolyline=e.layer;
-    // TODO: 各頂点にドラッグマーカー配置して折れ曲げ編集
-  }
-});
+
+// ------------------- 線路上駅追加 -------------------
+document.getElementById('btnAddStationOnTrack').onclick=()=>{
+  mode='stationOnTrack';
+  document.querySelectorAll('#buildTab .btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btnAddStationOnTrack').classList.add('active');
+};
 
 // ------------------- 路線作成 -------------------
 document.getElementById('btnRouteMode').onclick=()=>{
@@ -140,14 +123,55 @@ document.getElementById('btnRouteRegister').onclick=()=>{
   const color=document.getElementById('routeColor').value;
   const latlngs=tempRouteStations.map(s=>s.latlng);
   const poly=L.polyline(latlngs,{color,weight:5,opacity:0.9}).addTo(trackLayer);
-  Company.routes.push({id,name:document.getElementById('routeName').value||`Route#${id}`,stations:tempRouteStations.map(s=>s.id),polyline:poly});
+  Company.routes.push({id,name:document.getElementById('routeName').value||`Route#${id}`,stations:tempRouteStations.map(s=>s.id),polyline:poly,color});
   tempRouteStations=[];
   document.getElementById('btnRouteRegister').disabled=true;
   updateHUD();
-  animateVehicle(poly); // 簡易車両アニメ
+  animateVehicle(poly); // 車両アニメ
 };
 
-// ------------------- 駅クリック（路線作成用） -------------------
+// ------------------- マップクリック -------------------
+map.on('click',e=>{
+  if(mode==='station'){
+    if(Company.funds<200000){alert('資金不足'); return;}
+    Company.funds-=200000;
+    const id=Company.nextStationId++;
+    const marker=L.circleMarker(e.latlng,{radius:8,color:'#2c7dce',fillColor:'#fff',fillOpacity:1,weight:2,draggable:true}).addTo(stationLayer);
+    marker.on('click',()=>onStationClick(id));
+    marker.dragging=new L.Handler.MarkerDrag(marker);
+    marker.dragging.enable();
+    Company.stations[id]={id,latlng:e.latlng,marker};
+    updateHUD();
+  } else if(mode==='layTrack'){
+    tempTrackPoints.push(e.latlng);
+    if(tempTrackPoints.length>1){
+      if(Company.funds<150000){alert('資金不足'); tempTrackPoints.pop(); return;}
+      Company.funds-=150000;
+      L.polyline(tempTrackPoints,{color:'#2364a5',weight:5,opacity:0.7}).addTo(trackLayer);
+    }
+  } else if(mode==='stationOnTrack'){
+    // クリックした線路の最近傍に駅を追加
+    let nearest=null,minDist=Infinity;
+    trackLayer.eachLayer(line=>{
+      const pts=line.getLatLngs();
+      pts.forEach(p=>{
+        const d=map.distance(e.latlng,p);
+        if(d<minDist){minDist=d; nearest=p;}
+      });
+    });
+    if(nearest){
+      const id=Company.nextStationId++;
+      const marker=L.circleMarker(nearest,{radius:8,color:'#e74c3c',fillColor:'#fff',fillOpacity:1,weight:2,draggable:true}).addTo(stationLayer);
+      marker.on('click',()=>onStationClick(id));
+      marker.dragging=new L.Handler.MarkerDrag(marker);
+      marker.dragging.enable();
+      Company.stations[id]={id,latlng:nearest,marker};
+      updateHUD();
+    }
+  }
+});
+
+// ------------------- 駅クリック -------------------
 function onStationClick(id){
   if(mode==='route'){
     const st=Company.stations[id];

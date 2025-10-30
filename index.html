@@ -98,72 +98,94 @@
   <input type="color" id="routeColorPicker" class="colorPicker" />
 
   <script>
-    const map = L.map('map').setView([35.68, 139.76], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+  const map = L.map('map').setView([35.68, 139.76], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(map);
 
-    let mode = null;
-    let stations = [];
-    let lines = [];
-    let currentConnection = [];
-    let currentRoute = [];
+  let mode = null;
+  let stations = [];
+  let lines = [];
+  let currentConnection = [];
+  let currentRoute = [];
+  let routeColor = '#ff6600';
 
-    function setMode(newMode, btn) {
-      mode = newMode;
-      document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-      if (btn) btn.classList.add('active');
+  const colorPicker = document.getElementById('routeColorPicker');
+
+  function setMode(newMode, btn) {
+    mode = newMode;
+    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    currentRoute = [];
+    currentConnection = [];
+    stations.forEach(s => s.setStyle({ color: '#5aa0f0', fillColor: '#5aa0f0' }));
+  }
+
+  document.getElementById('btnPlaceStation').onclick = e => setMode('station', e.target);
+  document.getElementById('btnConnect').onclick = e => setMode('connect', e.target);
+  document.getElementById('btnRoute').onclick = e => setMode('route', e.target);
+
+  map.on('click', e => {
+    if (mode === 'station') {
+      const marker = L.circleMarker(e.latlng, { radius: 7, color: '#5aa0f0', fillColor: '#5aa0f0', fillOpacity: 0.8 }).addTo(map);
+      marker.stationId = stations.length;
+      marker.bindTooltip('駅 ' + (stations.length + 1));
+      stations.push(marker);
+      document.getElementById('stationCount').textContent = stations.length;
+
+      marker.on('click', evt => handleStationClick(evt.target));
+    }
+  });
+
+  function handleStationClick(station) {
+    if (mode === 'connect') {
+      currentConnection.push(station);
+      station.setStyle({ color: '#ffaa00', fillColor: '#ffaa00' });
+      if (currentConnection.length === 2) {
+        const line = L.polyline(
+          [currentConnection[0].getLatLng(), currentConnection[1].getLatLng()],
+          { color: '#888', weight: 4 }
+        ).addTo(map);
+        lines.push(line);
+        currentConnection.forEach(s => s.setStyle({ color: '#5aa0f0', fillColor: '#5aa0f0' }));
+        currentConnection = [];
+      }
     }
 
-    document.getElementById('btnPlaceStation').onclick = e => setMode('station', e.target);
-    document.getElementById('btnConnect').onclick = e => setMode('connect', e.target);
-    document.getElementById('btnRoute').onclick = e => setMode('route', e.target);
+    if (mode === 'route') {
+      station.setStyle({ color: '#ff8800', fillColor: '#ff8800' });
+      currentRoute.push(station.getLatLng());
+    }
+  }
 
-    map.on('click', e => {
-      if (mode === 'station') {
-        const marker = L.circleMarker(e.latlng, { radius: 7, color: '#5aa0f0', fillColor: '#5aa0f0', fillOpacity: 0.8 }).addTo(map);
-        marker.stationId = stations.length;
-        marker.bindTooltip('駅 ' + (stations.length + 1));
-        stations.push(marker);
-        document.getElementById('stationCount').textContent = stations.length;
+  // 路線確定ボタン
+  const confirmBtn = document.createElement('button');
+  confirmBtn.textContent = '路線を確定';
+  confirmBtn.className = 'btn';
+  confirmBtn.style.marginTop = '8px';
+  document.querySelector('.toolbox').appendChild(confirmBtn);
 
-        marker.on('click', evt => {
-          if (mode === 'connect') {
-            currentConnection.push(evt.target);
-            if (currentConnection.length === 2) {
-              const line = L.polyline([currentConnection[0].getLatLng(), currentConnection[1].getLatLng()], { color: '#888', weight: 4 }).addTo(map);
-              lines.push(line);
-              currentConnection = [];
-            }
-          } else if (mode === 'route') {
-            currentRoute.push(evt.target.getLatLng());
-          }
-        });
-      }
-    });
+  confirmBtn.onclick = () => {
+    if (mode === 'route' && currentRoute.length >= 2) {
+      colorPicker.style.display = 'block';
+      colorPicker.style.left = '160px';
+      colorPicker.style.top = '80px';
+      colorPicker.onchange = () => {
+        routeColor = colorPicker.value;
+        const routeLine = L.polyline(currentRoute, { color: routeColor, weight: 5 }).addTo(map);
+        const routeName = prompt('路線名を入力してください:', '新路線');
+        if (routeName) routeLine.bindTooltip(routeName);
+        let count = parseInt(document.getElementById('routeCount').textContent);
+        document.getElementById('routeCount').textContent = count + 1;
+        currentRoute = [];
+        colorPicker.style.display = 'none';
+        stations.forEach(s => s.setStyle({ color: '#5aa0f0', fillColor: '#5aa0f0' }));
+      };
+    } else {
+      alert('2つ以上の駅を選んでください');
+    }
+  };
+</script>
 
-    // 路線登録モードで色選択
-    const colorPicker = document.getElementById('routeColorPicker');
-    document.getElementById('btnRoute').addEventListener('dblclick', () => {
-      if (currentRoute.length >= 2) {
-        colorPicker.style.display = 'block';
-        colorPicker.style.left = '200px';
-        colorPicker.style.top = '80px';
-        colorPicker.onchange = () => {
-          const routeColor = colorPicker.value;
-          const routeLine = L.polyline(currentRoute, { color: routeColor, weight: 5 }).addTo(map);
-          lines.push(routeLine);
-          colorPicker.style.display = 'none';
-          const routeName = prompt('路線名を入力してください:', '新路線');
-          if (routeName) {
-            routeLine.bindTooltip(routeName);
-          }
-          currentRoute = [];
-          let count = parseInt(document.getElementById('routeCount').textContent);
-          document.getElementById('routeCount').textContent = count + 1;
-        };
-      }
-    });
-  </script>
 </body>
 </html>

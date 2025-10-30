@@ -3,94 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YMS Transit — 路線構築版</title>
+  <title>YMS Transit — 路線・線路構築版</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background-color: #0d1117;
-      font-family: "Segoe UI", sans-serif;
-      color: #e6edf3;
-    }
-
-    #map {
-      height: 100%;
-      width: 100%;
-      filter: brightness(0.85) saturate(0.8);
-    }
+    html, body { height: 100%; margin: 0; background: #0d1117; color: #e6edf3; font-family: "Segoe UI", sans-serif; }
+    #map { height: 100%; width: 100%; filter: brightness(0.85) saturate(0.8); }
 
     .hud {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(25,25,25,0.8);
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 13px;
-      z-index: 1000;
-      width: 200px;
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(25,25,25,0.8); padding: 10px; border-radius: 8px;
+      font-size: 13px; z-index: 1000; width: 200px;
     }
-
-    .hud .row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 2px;
-    }
+    .hud .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
 
     .toolbox {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(25,25,25,0.85);
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 13px;
-      z-index: 1000;
+      position: absolute; bottom: 10px; left: 10px;
+      background: rgba(25,25,25,0.85); padding: 10px; border-radius: 8px;
+      font-size: 13px; z-index: 1000;
     }
-
     .btn {
-      background-color: #444;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 10px;
-      cursor: pointer;
-      margin: 2px;
-      transition: 0.2s;
+      background-color: #444; color: #fff; border: none;
+      border-radius: 6px; padding: 6px 10px; cursor: pointer;
+      margin: 2px; transition: 0.2s;
     }
-
-    .btn.active {
-      background-color: #2c7dce;
-      box-shadow: 0 0 6px #5aa0f0;
-    }
+    .btn.active { background-color: #2c7dce; box-shadow: 0 0 6px #5aa0f0; }
 
     .infoBox {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.5);
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      z-index: 1000;
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.5); padding: 5px 12px; border-radius: 6px;
+      font-size: 13px; z-index: 1000;
     }
 
     .station-marker {
-      background: #5aa0f0;
-      border: 2px solid white;
-      border-radius: 50%;
-      width: 14px;
-      height: 14px;
-      opacity: 0.9;
+      background: #5aa0f0; border: 2px solid white; border-radius: 50%;
+      width: 14px; height: 14px; opacity: 0.9;
     }
-
-    .station-marker.selected {
-      background: #ffcc00;
-      border-color: #fff;
-    }
+    .station-marker.selected { background: #ffcc00; border-color: #fff; }
   </style>
 </head>
 <body>
@@ -107,6 +56,7 @@
 
   <div class="toolbox">
     <button class="btn" id="btnPlaceStation">駅設置</button>
+    <button class="btn" id="btnConnect">線路設置</button>
     <button class="btn" id="btnCreateRoute">路線作成</button>
     <button class="btn" id="btnRegisterRoute">路線登録</button>
   </div>
@@ -123,6 +73,7 @@
     let mode = null;
     let selectedStations = [];
     let tempLines = [];
+    let trackLines = [];
 
     const infoBox = document.getElementById("infoBox");
 
@@ -135,23 +86,37 @@
       });
     }
 
-    // --- 駅設置モード ---
+    // --- モード切替 ---
+    function setMode(newMode, message) {
+      if (mode === newMode) {
+        mode = null;
+        infoBox.textContent = "東京全域マップ — 下メニューで操作";
+        setActiveButton(null);
+      } else {
+        mode = newMode;
+        infoBox.textContent = message;
+        setActiveButton("btn" + newMode.charAt(0).toUpperCase() + newMode.slice(1));
+        selectedStations = [];
+        clearTempLines();
+      }
+    }
+
+    // 駅設置
     document.getElementById("btnPlaceStation").addEventListener("click", () => {
-      mode = (mode === "station") ? null : "station";
-      setActiveButton(mode === "station" ? "btnPlaceStation" : null);
-      infoBox.textContent = mode ? "駅設置モード：クリックで駅を配置" : "東京全域マップ — 下メニューで操作";
+      setMode("PlaceStation", "駅設置モード：クリックで駅を配置");
     });
 
-    // --- 路線作成モード ---
+    // 線路設置
+    document.getElementById("btnConnect").addEventListener("click", () => {
+      setMode("Connect", "線路設置モード：駅を2つクリックして線路を引く");
+    });
+
+    // 路線作成
     document.getElementById("btnCreateRoute").addEventListener("click", () => {
-      mode = (mode === "route") ? null : "route";
-      setActiveButton(mode === "route" ? "btnCreateRoute" : null);
-      selectedStations = [];
-      clearTempLines();
-      infoBox.textContent = mode ? "路線作成モード：駅を順にクリックでルート指定" : "東京全域マップ — 下メニューで操作";
+      setMode("CreateRoute", "路線作成モード：駅を順にクリックでルート指定");
     });
 
-    // --- 路線登録 ---
+    // 路線登録
     document.getElementById("btnRegisterRoute").addEventListener("click", () => {
       if (selectedStations.length < 2) {
         alert("最低2駅を選んでください。");
@@ -169,7 +134,6 @@
 
       document.getElementById("routeCount").textContent = routes.length;
       alert(`路線「${name}」を登録しました！`);
-
       selectedStations.forEach(s => s.marker._icon.classList.remove("selected"));
       selectedStations = [];
       clearTempLines();
@@ -178,13 +142,10 @@
       infoBox.textContent = "東京全域マップ — 下メニューで操作";
     });
 
-    // --- 駅設置 ---
+    // 駅設置クリック
     map.on("click", (e) => {
-      if (mode === "station") {
-        const divIcon = L.divIcon({
-          className: "station-marker",
-          iconSize: [14, 14]
-        });
+      if (mode === "PlaceStation") {
+        const divIcon = L.divIcon({ className: "station-marker", iconSize: [14, 14] });
         const marker = L.marker(e.latlng, { icon: divIcon, draggable: true }).addTo(map);
         const name = `駅${stations.length + 1}`;
         marker.bindTooltip(name, { permanent: true, direction: "top", offset: [0, -10] }).openTooltip();
@@ -192,21 +153,31 @@
         const stationObj = { id: stations.length + 1, name, marker };
         stations.push(stationObj);
 
-        marker.on("click", (ev) => onStationClick(stationObj));
-        marker.on("drag", (ev) => updateLines());
+        marker.on("click", () => onStationClick(stationObj));
+        marker.on("drag", () => updateLines());
         document.getElementById("stationCount").textContent = stations.length;
       }
     });
 
-    // --- 駅クリック時 ---
+    // 駅クリック
     function onStationClick(station) {
-      if (mode === "route") {
+      if (mode === "Connect") {
+        selectedStations.push(station);
+        station.marker._icon.classList.add("selected");
+        if (selectedStations.length === 2) {
+          const a = selectedStations[0].marker.getLatLng();
+          const b = selectedStations[1].marker.getLatLng();
+          const line = L.polyline([a, b], { color: "#999", weight: 3 }).addTo(map);
+          trackLines.push(line);
+          selectedStations.forEach(s => s.marker._icon.classList.remove("selected"));
+          selectedStations = [];
+        }
+      } else if (mode === "CreateRoute") {
         if (!selectedStations.includes(station)) {
           selectedStations.push(station);
           station.marker._icon.classList.add("selected");
           updateTempLines();
         } else {
-          // 再クリックで削除
           selectedStations = selectedStations.filter(s => s !== station);
           station.marker._icon.classList.remove("selected");
           updateTempLines();
@@ -214,7 +185,6 @@
       }
     }
 
-    // --- 仮ルート描画 ---
     function updateTempLines() {
       clearTempLines();
       for (let i = 0; i < selectedStations.length - 1; i++) {
@@ -225,13 +195,15 @@
       }
     }
 
-    function updateLines() {
-      if (mode === "route") updateTempLines();
-    }
-
     function clearTempLines() {
       tempLines.forEach(line => map.removeLayer(line));
       tempLines = [];
+    }
+
+    function updateLines() {
+      trackLines.forEach(line => map.removeLayer(line));
+      trackLines = [];
+      // 再描画は今後実装（駅移動後の再接続用）
     }
   </script>
 </body>

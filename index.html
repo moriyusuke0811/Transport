@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YMS Transit Prototype v2</title>
+  <title>YMS Transit — Prototype v3</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
@@ -11,10 +11,16 @@
       height: 100%;
       margin: 0;
       background-color: #0d1117;
-      color: #e6edf3;
       font-family: "Segoe UI", sans-serif;
+      color: #e6edf3;
     }
-    #map { height: 100%; width: 100%; }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      filter: brightness(0.85) saturate(0.8); /* 彩度を落として全体を落ち着かせる */
+    }
+
     .hud {
       position: absolute;
       top: 10px;
@@ -26,7 +32,13 @@
       z-index: 1000;
       width: 200px;
     }
-    .hud .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+
+    .hud .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+
     .toolbox {
       position: absolute;
       bottom: 10px;
@@ -37,6 +49,7 @@
       font-size: 13px;
       z-index: 1000;
     }
+
     .btn {
       background-color: #2c7dce;
       color: #fff;
@@ -46,7 +59,11 @@
       cursor: pointer;
       margin: 2px;
     }
-    .btn.secondary { background-color: #444; }
+
+    .btn.secondary {
+      background-color: #444;
+    }
+
     .infoBox {
       position: absolute;
       top: 10px;
@@ -57,6 +74,20 @@
       border-radius: 6px;
       font-size: 13px;
       z-index: 1000;
+    }
+
+    .station-marker {
+      background: #5aa0f0;
+      border: 2px solid white;
+      border-radius: 50%;
+      width: 14px;
+      height: 14px;
+      opacity: 0.9;
+    }
+
+    .station-marker.selected {
+      background: #ffcc00;
+      border-color: #fff;
     }
   </style>
 </head>
@@ -81,15 +112,18 @@
   </div>
 
   <script>
-    const map = L.map('map').setView([35.681236, 139.767125], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+    const map = L.map('map', { zoomControl: false }).setView([35.681236, 139.767125], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-    // ===== データ構造 =====
+    // ===== データ =====
     let stations = [];
     let tracks = [];
     let routes = [];
 
-    // ===== 状態管理 =====
+    // ===== 状態 =====
     let mode = null;
     let selectedStations = [];
     let selectedTracks = [];
@@ -105,94 +139,94 @@
 
     map.on("click", (e) => {
       if (mode === "station") {
-        const marker = L.marker(e.latlng).addTo(map);
+        const divIcon = L.divIcon({
+          className: "station-marker",
+          iconSize: [14, 14]
+        });
+        const marker = L.marker(e.latlng, { icon: divIcon }).addTo(map);
         const name = `駅${stations.length + 1}`;
-        marker.bindTooltip(name, { permanent: true, direction: "top" }).openTooltip();
-        stations.push({ id: stations.length + 1, name, marker, pos: e.latlng });
+        marker.bindTooltip(name, { permanent: true, direction: "top", offset: [0, -10] }).openTooltip();
+
+        const stationObj = { id: stations.length + 1, name, marker, pos: e.latlng };
+        stations.push(stationObj);
+        marker.on("click", (ev) => onStationClick(ev, stationObj));
+
         document.getElementById("stationCount").textContent = stations.length;
       }
     });
+
+    // ===== 駅クリック処理 =====
+    function onStationClick(e, stationObj) {
+      if (mode === "track") {
+        selectedStations.push(stationObj);
+        stationObj.marker._icon.classList.add("selected");
+
+        if (selectedStations.length === 2) {
+          const [a, b] = selectedStations;
+          const line = L.polyline([a.pos, b.pos], { color: "#8ecae6", weight: 3 }).addTo(map);
+          tracks.push({ id: tracks.length + 1, stations: [a.id, b.id], line });
+          document.getElementById("trackCount").textContent = tracks.length;
+          selectedStations.forEach(s => s.marker._icon.classList.remove("selected"));
+          selectedStations = [];
+        }
+      }
+    }
 
     // ===== 線路接続 =====
     document.getElementById("btnConnect").addEventListener("click", () => {
       mode = (mode === "track") ? null : "track";
       selectedStations = [];
-      infoBox.textContent = mode ? "線路接続モード：駅を2つ選択" : "東京全域マップ — 左下で操作";
+      infoBox.textContent = mode ? "線路接続モード：駅を2つクリック" : "東京全域マップ — 左下で操作";
     });
-
-    function onStationClickForTrack(e, stationObj) {
-      if (mode !== "track") return;
-      selectedStations.push(stationObj);
-      if (selectedStations.length === 2) {
-        const [a, b] = selectedStations;
-        const line = L.polyline([a.pos, b.pos], { color: "#88ccee", weight: 3 }).addTo(map);
-        tracks.push({ id: tracks.length + 1, stations: [a.id, b.id], line });
-        document.getElementById("trackCount").textContent = tracks.length;
-        selectedStations = [];
-      }
-    }
-
-    // 駅クリックイベント登録
-    function updateStationClickHandlers() {
-      stations.forEach(s => {
-        s.marker.off("click");
-        s.marker.on("click", (e) => onStationClickForTrack(e, s));
-        s.marker.on("click", (e) => onTrackSelectClick(e, s));
-      });
-    }
 
     // ===== 路線作成 =====
     document.getElementById("btnCreateRoute").addEventListener("click", () => {
       mode = (mode === "route") ? null : "route";
       selectedTracks = [];
       if (tempLine) { map.removeLayer(tempLine); tempLine = null; }
-      infoBox.textContent = mode ? "路線作成モード：線路をクリックしてルートを選択" : "東京全域マップ — 左下で操作";
+      infoBox.textContent = mode ? "路線作成モード：線路をクリックでルートを選択" : "東京全域マップ — 左下で操作";
     });
-
-    function onTrackSelectClick(e, stationObj) {
-      if (mode !== "route") return;
-      // 線クリックではなく駅経由で指定する場合に対応
-    }
 
     map.on("click", (e) => {
       if (mode === "route") {
-        // 線をクリックした場合の検出を簡易的に実装
         tracks.forEach(track => {
           const dist = map.distance(e.latlng, track.line.getCenter());
-          if (dist < 200) { // 適当な距離判定
-            if (!selectedTracks.includes(track)) selectedTracks.push(track);
+          if (dist < 200) {
+            if (!selectedTracks.includes(track)) {
+              selectedTracks.push(track);
+              track.line.setStyle({ color: "cyan", weight: 5 });
+            } else {
+              selectedTracks = selectedTracks.filter(t => t !== track);
+              track.line.setStyle({ color: "#8ecae6", weight: 3 });
+            }
           }
         });
-        if (tempLine) map.removeLayer(tempLine);
-        const points = selectedTracks.flatMap(t => t.line.getLatLngs());
-        if (points.length > 0) tempLine = L.polyline(points, { color: "cyan", weight: 4, dashArray: "4,2" }).addTo(map);
       }
     });
 
     // ===== 路線登録 =====
     document.getElementById("btnRegisterRoute").addEventListener("click", () => {
       if (selectedTracks.length === 0) {
-        alert("まず線路を選択してください。");
+        alert("線路を選択してください。");
         return;
       }
       const name = prompt("路線名を入力：");
       if (!name) return;
+
       routes.push({
         id: routes.length + 1,
         name,
         tracks: selectedTracks.map(t => t.id)
       });
+
       document.getElementById("routeCount").textContent = routes.length;
       alert(`「${name}」を登録しました！`);
-      selectedTracks = [];
-      if (tempLine) { map.removeLayer(tempLine); tempLine = null; }
-      infoBox.textContent = "東京全域マップ — 左下で操作";
-      mode = null;
-    });
 
-    // 駅追加時にイベント更新
-    const observer = new MutationObserver(updateStationClickHandlers);
-    observer.observe(document.getElementById("stationCount"), { childList: true });
+      selectedTracks.forEach(t => t.line.setStyle({ color: "#8ecae6", weight: 3 }));
+      selectedTracks = [];
+      mode = null;
+      infoBox.textContent = "東京全域マップ — 左下で操作";
+    });
   </script>
 </body>
 </html>

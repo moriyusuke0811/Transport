@@ -9,28 +9,27 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-  html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",system-ui,Arial;}
-  #map{width:100%;height:100vh;}
+html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",system-ui,Arial;}
+#map{width:100%;height:100vh;}
 
-  .panel { position:absolute; left:12px; top:12px; z-index:1400; width:300px;
-    background:rgba(255,255,255,0.96); padding:12px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12);}
-  .panel h3{margin:0 0 8px 0;font-size:16px}
-  .btn{display:block;width:100%;padding:8px;margin:6px 0;border-radius:8px;border:none;background:#2c7dce;color:#fff;font-weight:700;cursor:pointer}
-  .btn.secondary{background:#6c757d}
-  .mini{font-size:12px;color:#444;margin-top:6px}
-  .confirmBar{position:absolute;left:12px;bottom:12px;z-index:1400;display:none;gap:8px;width:300px}
-  .miniBtn{flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
-  .miniBtn.ok{background:#27ae60;color:#fff}
-  .miniBtn.cancel{background:#c0c0c0;color:#222}
+.panel { position:absolute; left:12px; top:12px; z-index:1400; width:300px;
+  background:rgba(255,255,255,0.96); padding:12px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12);}
+.panel h3{margin:0 0 8px 0;font-size:16px}
+.btn{display:block;width:100%;padding:8px;margin:6px 0;border-radius:8px;border:none;background:#2c7dce;color:#fff;font-weight:700;cursor:pointer}
+.btn.secondary{background:#6c757d}
+.mini{font-size:12px;color:#444;margin-top:6px}
+.confirmBar{position:absolute;left:12px;bottom:12px;z-index:1400;display:none;gap:8px;width:300px}
+.miniBtn{flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+.miniBtn.ok{background:#27ae60;color:#fff}
+.miniBtn.cancel{background:#c0c0c0;color:#222}
 
-  .hud{position:absolute;right:12px;top:12px;z-index:1400;width:220px;background:rgba(255,255,255,0.96);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(0,0,0,0.12);font-size:13px}
-  .hud .row{display:flex;justify-content:space-between;margin:6px 0}
+.hud{position:absolute;right:12px;top:12px;z-index:1400;width:220px;background:rgba(255,255,255,0.96);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(0,0,0,0.12);font-size:13px}
+.hud .row{display:flex;justify-content:space-between;margin:6px 0}
 
-  /* small styles for icons */
-  .tempCircle{width:12px;height:12px;border-radius:50%;background:rgba(44,125,206,0.6);border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
-  .builtCircle{width:18px;height:18px;border-radius:50%;background:#2c7dce;border:3px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)}
-  .tempSquare{width:12px;height:12px;background:rgba(120,120,120,0.95);border:1px solid #444;border-radius:2px}
-
+/* small styles for icons */
+.tempCircle{width:12px;height:12px;border-radius:50%;background:rgba(44,125,206,0.6);border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
+.builtCircle{width:18px;height:18px;border-radius:50%;background:#2c7dce;border:3px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)}
+.tempSquare{width:12px;height:12px;background:rgba(120,120,120,0.95);border:1px solid #444;border-radius:2px}
 </style>
 </head>
 <body>
@@ -63,267 +62,207 @@
 <script>
 /* -------------------------
    定数・経済
-   ------------------------- */
-const COST = {
-  station: 200000,
-  trackPerKm: 150000,
-  demolitionFactor: 0.5 // 取り壊し費用 = 建設費 * factor
-};
-let SIM = { funds: 10000000, history: [] };
+------------------------- */
+const COST = { station:200000, trackPerKm:150000, demolitionFactor:0.5 };
+let SIM = { funds:10000000, history:[] };
 
 /* -------------------------
    マップ & レイヤ
-   ------------------------- */
-const map = L.map('map').setView([35.681236,139.767125], 11);
+------------------------- */
+const map = L.map('map').setView([35.681236,139.767125],11);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
-const stationLayer = L.layerGroup().addTo(map);      // built stations
-const tempStationLayer = L.layerGroup().addTo(map);  // temp stations
-const trackLayer = L.layerGroup().addTo(map);        // built track segments
-const tempTrackLayer = L.layerGroup().addTo(map);    // temp track nodes & preview
+const stationLayer = L.layerGroup().addTo(map);
+const tempStationLayer = L.layerGroup().addTo(map);
+const trackLayer = L.layerGroup().addTo(map);
+const tempTrackLayer = L.layerGroup().addTo(map);
 
 /* -------------------------
    DB
-   tracks: map of trackId -> { id, segments: [{id, start, end, polyline, builtCost}], totalCost }
-   stations: map stationId -> { id, latlng, marker, builtCost }
-   ------------------------- */
-const DB = { stations: {}, tracks: {} };
+------------------------- */
+const DB = { stations:{}, tracks:{} };
 let nextIds = { station:1, track:1, segment:1 };
 
 /* -------------------------
    HUD update
-   ------------------------- */
-function formatYen(n){ return '¥' + Math.round(n).toLocaleString(); }
+------------------------- */
+function formatYen(n){ return '¥'+Math.round(n).toLocaleString(); }
 function updateHUD(){
   document.getElementById('funds').textContent = formatYen(SIM.funds);
   document.getElementById('stationCount').textContent = Object.keys(DB.stations).length;
-  // count segments
-  let segCount = 0;
-  Object.values(DB.tracks).forEach(t => segCount += t.segments.length);
+  let segCount=0; Object.values(DB.tracks).forEach(t=>segCount+=t.segments.length);
   document.getElementById('segmentCount').textContent = segCount;
 }
 updateHUD();
 
 /* -------------------------
    Mode & temp storage
-   ------------------------- */
-let mode = null; // null | 'tempStation' | 'tempTrack'
-let temp = { stations: [], trackNodes: [], previewLine: null };
+------------------------- */
+let mode=null;
+let temp={ stations:[], trackNodes:[], previewLine:null };
 
-/* UI elements */
-const btnTempStation = document.getElementById('btnTempStation');
-const btnTempTrack = document.getElementById('btnTempTrack');
-const confirmBar = document.getElementById('confirmBar');
-const btnConfirm = document.getElementById('btnConfirm');
-const btnCancel = document.getElementById('btnCancel');
+const btnTempStation=document.getElementById('btnTempStation');
+const btnTempTrack=document.getElementById('btnTempTrack');
+const confirmBar=document.getElementById('confirmBar');
+const btnConfirm=document.getElementById('btnConfirm');
+const btnCancel=document.getElementById('btnCancel');
 
-/* -------------------------
-   Mode entry/exit
-   ------------------------- */
-btnTempStation.addEventListener('click', ()=> {
-  if(mode) return alert('他の仮設置モードがアクティブです。取消または確定してください。');
-  enterTempStationMode();
-});
-btnTempTrack.addEventListener('click', ()=> {
-  if(mode) return alert('他の仮設置モードがアクティブです。取消または確定してください。');
-  enterTempTrackMode();
-});
+btnTempStation.addEventListener('click', ()=>{ if(mode) return alert('他の仮設置モードがアクティブです。取消または確定してください。'); enterTempStationMode(); });
+btnTempTrack.addEventListener('click', ()=>{ if(mode) return alert('他の仮設置モードがアクティブです。取消または確定してください。'); enterTempTrackMode(); });
 
 btnCancel.addEventListener('click', cancelTemp);
 btnConfirm.addEventListener('click', confirmTemp);
 
-function enterTempStationMode(){
-  mode = 'tempStation';
-  btnTempStation.classList.add('modeActive');
-  confirmBar.style.display = 'flex';
-  map.on('click', onMapClickTempStation);
-}
-function enterTempTrackMode(){
-  mode = 'tempTrack';
-  btnTempTrack.classList.add('modeActive');
-  confirmBar.style.display = 'flex';
-  map.on('click', onMapClickTempTrack);
-}
+function enterTempStationMode(){ mode='tempStation'; btnTempStation.classList.add('modeActive'); confirmBar.style.display='flex'; map.on('click', onMapClickTempStation); }
+function enterTempTrackMode(){ mode='tempTrack'; btnTempTrack.classList.add('modeActive'); confirmBar.style.display='flex'; map.on('click', onMapClickTempTrack); }
 
 /* -------------------------
-   Temp Station handlers
-   ------------------------- */
+   Temp Station
+------------------------- */
 function onMapClickTempStation(e){
-  if(mode !== 'tempStation') return;
-  const pin = createTempStationMarker(e.latlng);
+  if(mode!=='tempStation') return;
+  const pin=createTempStationMarker(e.latlng);
   tempStationLayer.addLayer(pin.marker);
   temp.stations.push(pin);
 }
 function createTempStationMarker(latlng){
-  const icon = L.divIcon({ html:`<div class="tempCircle"></div>`, iconSize:[16,16], iconAnchor:[8,8] });
-  const marker = L.marker(latlng, { icon, draggable:true }).addTo(tempStationLayer);
-  const obj = { latlng, marker };
-  marker.on('drag', (ev)=> obj.latlng = ev.target.getLatLng());
+  const icon=L.divIcon({ html:`<div class="tempCircle"></div>`, iconSize:[16,16], iconAnchor:[8,8] });
+  const marker=L.marker(latlng,{icon,draggable:true}).addTo(tempStationLayer);
+  const obj={latlng, marker};
+  marker.on('drag', (ev)=> obj.latlng=ev.target.getLatLng());
   return obj;
 }
 
 /* -------------------------
-   Temp Track handlers
-   - click to add node
-   - if click on built station while in tempTrack and no nodes yet -> start from that station (snap)
-   - if click on built station while nodes exist -> add node snapped to station and connect
-   - nodes are draggable and update preview
-   ------------------------- */
+   Temp Track
+------------------------- */
 function onMapClickTempTrack(e){
-  if(mode !== 'tempTrack') return;
-  // detect if clicked on built station (within 12px)
-  const clickedStationId = findNearestBuiltStationId(e.latlng, 20); // pixels threshold in meters? use meters distance
+  if(mode!=='tempTrack') return;
+  const clickedStationId=findNearestBuiltStationId(e.latlng,20);
   if(clickedStationId){
-    const st = DB.stations[clickedStationId];
-    addTempTrackNode(st.latlng, {snapStationId: clickedStationId});
+    const st=DB.stations[clickedStationId];
+    addTempTrackNode(st.latlng,{snapStationId:clickedStationId});
   } else {
     addTempTrackNode(e.latlng);
   }
 }
 function addTempTrackNode(latlng, opts={}){
-  const icon = L.divIcon({ html:`<div class="tempSquare"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
-  const marker = L.marker(latlng, { icon, draggable:true }).addTo(tempTrackLayer);
-  const node = { latlng, marker, snapStationId: opts.snapStationId || null };
-  marker.on('drag', ev => {
-    node.latlng = ev.target.getLatLng();
-    updateTempPreview();
-  });
-  marker.on('click', ev => {
-    // if clicked on a built station while clicking node? not needed
-  });
+  const icon=L.divIcon({ html:`<div class="tempSquare"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
+  const marker=L.marker(latlng,{ icon, draggable:true }).addTo(tempTrackLayer);
+  const node={ latlng, marker, snapStationId: opts.snapStationId || null };
+  marker.on('drag', ev=> { node.latlng=ev.target.getLatLng(); updateTempPreview(); });
   temp.trackNodes.push(node);
   updateTempPreview();
 }
 function updateTempPreview(){
-  if(temp.previewLine){ tempTrackLayer.removeLayer(temp.previewLine); temp.previewLine = null; }
-  const pts = temp.trackNodes.map(n=> n.latlng);
-  if(pts.length >= 2){
-    temp.previewLine = L.polyline(pts, { color:'#999', dashArray:'6,4', weight:4 }).addTo(tempTrackLayer);
-  }
+  if(temp.previewLine){ tempTrackLayer.removeLayer(temp.previewLine); temp.previewLine=null; }
+  const pts=temp.trackNodes.map(n=>n.latlng);
+  if(pts.length>=2) temp.previewLine=L.polyline(pts,{color:'#999',dashArray:'6,4',weight:4}).addTo(tempTrackLayer);
 }
 
 /* -------------------------
-   Utilities: find nearest station by meters
-   ------------------------- */
-function findNearestBuiltStationId(latlng, maxMeters){
-  let best = null, bestD = Infinity;
+   Utilities
+------------------------- */
+function findNearestBuiltStationId(latlng,maxMeters){
+  let best=null,bestD=Infinity;
   Object.values(DB.stations).forEach(s=>{
-    const d = map.distance(latlng, s.latlng);
-    if(d < bestD){ bestD = d; best = s; }
+    const d=map.distance(latlng,s.latlng);
+    if(d<bestD){ bestD=d; best=s; }
   });
-  if(best && bestD <= maxMeters) return best.id;
+  if(best&&bestD<=maxMeters) return best.id;
   return null;
 }
 
 /* -------------------------
    Cancel & Confirm
-   ------------------------- */
+------------------------- */
 function cancelTemp(){
   if(!mode) return;
   if(!confirm('仮設置を取消しますか？')) return;
-  // remove handlers
-  if(mode === 'tempStation') map.off('click', onMapClickTempStation);
-  if(mode === 'tempTrack') map.off('click', onMapClickTempTrack);
-  // clear visuals
+  if(mode==='tempStation') map.off('click', onMapClickTempStation);
+  if(mode==='tempTrack') map.off('click', onMapClickTempTrack);
   temp.stations.forEach(o=> tempStationLayer.removeLayer(o.marker));
-  temp.stations = [];
+  temp.stations=[];
   temp.trackNodes.forEach(n=> tempTrackLayer.removeLayer(n.marker));
-  temp.trackNodes = [];
-  if(temp.previewLine){ tempTrackLayer.removeLayer(temp.previewLine); temp.previewLine=null; }
-  // reset UI
-  mode = null;
+  temp.trackNodes=[];
+  if(temp.previewLine) tempTrackLayer.removeLayer(temp.previewLine);
+  temp.previewLine=null;
+  mode=null;
   btnTempStation.classList.remove('modeActive');
   btnTempTrack.classList.remove('modeActive');
-  confirmBar.style.display = 'none';
+  confirmBar.style.display='none';
 }
 
 function confirmTemp(){
   if(!mode) return;
-  if(mode === 'tempStation'){
-    if(temp.stations.length === 0) return alert('仮設置された駅がありません');
-    const totalCost = COST.station * temp.stations.length;
-    if(SIM.funds < totalCost) return alert('資金不足です');
+  if(mode==='tempStation'){
+    if(temp.stations.length===0) return alert('仮設置された駅がありません');
+    const totalCost=COST.station*temp.stations.length;
+    if(SIM.funds<totalCost) return alert('資金不足です');
     if(!confirm(`仮設置駅 ${temp.stations.length} を建設しますか？ 合計 ${formatYen(totalCost)}`)) return;
-    // commit each
     temp.stations.forEach(o=>{
-      SIM.funds -= COST.station;
-      const id = nextIds.station++;
-      const icon = L.divIcon({ html:`<div class="builtCircle"></div>`, iconSize:[24,24], iconAnchor:[12,12] });
-      const marker = L.marker(o.latlng, { icon, draggable:false }).addTo(stationLayer);
-      marker.on('click', ()=> onBuiltStationClick(id));
-      DB.stations[id] = { id, latlng: o.latlng, marker, builtCost: COST.station };
+      SIM.funds-=COST.station;
+      const id=nextIds.station++;
+      const icon=L.divIcon({ html:`<div class="builtCircle"></div>`, iconSize:[24,24], iconAnchor:[12,12] });
+      const marker=L.marker(o.latlng,{icon,draggable:false}).addTo(stationLayer);
+      DB.stations[id]={ id, latlng:o.latlng, marker, builtCost:COST.station };
       tempStationLayer.removeLayer(o.marker);
     });
-    // cleanup
-    temp.stations = [];
+    temp.stations=[];
     map.off('click', onMapClickTempStation);
-    mode = null;
+    mode=null;
     btnTempStation.classList.remove('modeActive');
-    confirmBar.style.display = 'none';
+    confirmBar.style.display='none';
     updateHUD();
+    enableStationTrackSnap();
     alert('駅を建設しました');
-  } else if(mode === 'tempTrack'){
-    if(temp.trackNodes.length < 2) return alert('線路ノードは2点以上必要です');
-    // build segments: each adjacent pair becomes one segment (so individual segments removable)
-    const latlngs = temp.trackNodes.map(n=> n.latlng);
-    // compute cost
-    let totalKm = 0;
-    for(let i=0;i<latlngs.length-1;i++) totalKm += map.distance(latlngs[i], latlngs[i+1]) / 1000;
-    const cost = Math.round(totalKm * COST.trackPerKm);
-    if(SIM.funds < cost) return alert('資金不足です');
+  } else if(mode==='tempTrack'){
+    if(temp.trackNodes.length<2) return alert('線路ノードは2点以上必要です');
+    const latlngs=temp.trackNodes.map(n=>n.latlng);
+    let totalKm=0; for(let i=0;i<latlngs.length-1;i++) totalKm+=map.distance(latlngs[i],latlngs[i+1])/1000;
+    const cost=Math.round(totalKm*COST.trackPerKm);
+    if(SIM.funds<cost) return alert('資金不足です');
     if(!confirm(`仮設の線路を確定しますか？ 総長 ${totalKm.toFixed(2)} km / 費用 ${formatYen(cost)}`)) return;
-    // create a track object with segments array
-    const trackId = nextIds.track++;
-    const trackObj = { id: trackId, segments: [], totalCost: cost };
-    // for each segment, create polyline and attach click demolish handler
+    const trackId=nextIds.track++;
+    const trackObj={id:trackId,segments:[],totalCost:cost};
     for(let i=0;i<latlngs.length-1;i++){
-      const a = latlngs[i], b = latlngs[i+1];
-      const segId = nextIds.segment++;
-      const segPoly = L.polyline([a,b], { color:'#7f8c8d', weight:6, opacity:0.95 }).addTo(trackLayer);
-      // store built cost per segment proportionally by distance
-      const segKm = map.distance(a,b)/1000;
-      const segCost = Math.round(segKm * COST.trackPerKm);
-      // attach click handler for demolish
-      segPoly.on('click', (ev)=> onBuiltSegmentClick(trackId, segId, ev.latlng));
-      trackObj.segments.push({ id: segId, start:a, end:b, polyline: segPoly, builtCost: segCost });
+      const a=latlngs[i],b=latlngs[i+1];
+      const segId=nextIds.segment++;
+      const segKm=map.distance(a,b)/1000;
+      const segCost=Math.round(segKm*COST.trackPerKm);
+      const segPoly=L.polyline([a,b],{color:'#7f8c8d',weight:6,opacity:0.95}).addTo(trackLayer);
+      segPoly.on('click', ev=>onBuiltSegmentClick(trackId,segId,ev.latlng));
+      trackObj.segments.push({id:segId,start:a,end:b,polyline:segPoly,builtCost:segCost});
     }
-    DB.tracks[trackId] = trackObj;
-    // deduct cost
-    SIM.funds -= cost;
-    // cleanup temp visuals and handlers
+    DB.tracks[trackId]=trackObj;
+    SIM.funds-=cost;
     temp.trackNodes.forEach(n=> tempTrackLayer.removeLayer(n.marker));
     if(temp.previewLine) tempTrackLayer.removeLayer(temp.previewLine);
-    temp.trackNodes = [];
-    temp.previewLine = null;
+    temp.trackNodes=[]; temp.previewLine=null;
     map.off('click', onMapClickTempTrack);
-    mode = null;
+    mode=null;
     btnTempTrack.classList.remove('modeActive');
-    confirmBar.style.display = 'none';
+    confirmBar.style.display='none';
     updateHUD();
     alert('線路を建設しました（区間ごとに管理されます）');
   }
 }
 
 /* -------------------------
-   Built element handlers (demolish)
-   ------------------------- */
+   Built element handlers
+------------------------- */
 function onBuiltStationClick(id){
-  const st = DB.stations[id];
+  const st=DB.stations[id];
   if(!st) return;
-  const popupHtml = `
-    <div><strong>駅 #${id}</strong></div>
-    <div class="mini">建設費: ${formatYen(st.builtCost)}</div>
-    <div style="margin-top:8px"><button id="btnDemolStation" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:white;cursor:pointer">取り壊す</button></div>
-  `;
+  const popupHtml=`<div><strong>駅 #${id}</strong></div><div class="mini">建設費: ${formatYen(st.builtCost)}</div><div style="margin-top:8px"><button id="btnDemolStation" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:white;cursor:pointer">取り壊す</button></div>`;
   st.marker.bindPopup(popupHtml).openPopup();
   st.marker.on('popupopen', ()=> {
-    const btn = document.getElementById('btnDemolStation');
-    if(!btn) return;
-    btn.onclick = ()=> {
-      if(!confirm('この駅を取り壊しますか？ 取り壊し費用が資金から差し引かれます。')) return;
-      const cost = Math.round(st.builtCost * COST.demolitionFactor);
-      if(SIM.funds < cost) return alert('資金不足で取り壊せません');
-      SIM.funds -= cost;
+    const btn=document.getElementById('btnDemolStation'); if(!btn) return;
+    btn.onclick=()=> {
+      if(!confirm('この駅を取り壊しますか？')) return;
+      const cost=Math.round(st.builtCost*COST.demolitionFactor);
+      if(SIM.funds<cost) return alert('資金不足で取り壊せません');
+      SIM.funds-=cost;
       stationLayer.removeLayer(st.marker);
       delete DB.stations[id];
       updateHUD();
@@ -333,27 +272,22 @@ function onBuiltStationClick(id){
   });
 }
 
-function onBuiltSegmentClick(trackId, segId, latlng){
-  const track = DB.tracks[trackId];
-  if(!track) return;
-  const segment = track.segments.find(s=> s.id === segId);
-  if(!segment) return;
-  const popup = L.popup({ maxWidth:240 }).setLatLng(latlng)
+function onBuiltSegmentClick(trackId,segId,latlng){
+  const track=DB.tracks[trackId]; if(!track) return;
+  const segment=track.segments.find(s=>s.id===segId); if(!segment) return;
+  const popup=L.popup({ maxWidth:240 }).setLatLng(latlng)
     .setContent(`<div><strong>線路 区間 #${segId}</strong><div class="mini">建設費: ${formatYen(segment.builtCost)}</div><div style="margin-top:8px"><button id="btnDemolSeg" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:white;cursor:pointer">この区間を取り壊す</button></div></div>`)
     .openOn(map);
   map.once('popupopen', ()=>{
-    const btn = document.getElementById('btnDemolSeg');
-    if(!btn) return;
-    btn.onclick = ()=> {
-      if(!confirm('この区間を取り壊しますか？ 取り壊し費用が資金から差し引かれます。')) return;
-      const cost = Math.round(segment.builtCost * COST.demolitionFactor);
-      if(SIM.funds < cost) return alert('資金不足で取り壊せません');
-      SIM.funds -= cost;
-      // remove polyline and remove segment from track
+    const btn=document.getElementById('btnDemolSeg'); if(!btn) return;
+    btn.onclick=()=> {
+      if(!confirm('この区間を取り壊しますか？')) return;
+      const cost=Math.round(segment.builtCost*COST.demolitionFactor);
+      if(SIM.funds<cost) return alert('資金不足で取り壊せません');
+      SIM.funds-=cost;
       trackLayer.removeLayer(segment.polyline);
-      track.segments = track.segments.filter(s=> s.id !== segId);
-      // if track has no segments left, remove track object
-      if(track.segments.length === 0) delete DB.tracks[trackId];
+      track.segments=track.segments.filter(s=>s.id!==segId);
+      if(track.segments.length===0) delete DB.tracks[trackId];
       updateHUD();
       map.closePopup();
       alert(`区間を取り壊しました（費用 ${formatYen(cost)}）`);
@@ -362,46 +296,26 @@ function onBuiltSegmentClick(trackId, segId, latlng){
 }
 
 /* -------------------------
-   Periodic HUD & housekeeping
-   ------------------------- */
-setInterval(()=> { updateHUD(); }, 500);
+   Enable station click snap
+------------------------- */
+function enableStationTrackSnap(){
+  Object.values(DB.stations).forEach(st=>{
+    const m=st.marker;
+    m.off('click'); // 重複防止
+    m.on('click', function(e){
+      if(mode==='tempTrack'){
+        addTempTrackNode(st.latlng,{ snapStationId: st.id });
+      } else {
+        onBuiltStationClick(st.id);
+      }
+    });
+  });
+}
 
 /* -------------------------
-   Prevent accidentally moving built elements (already non-draggable)
-   ------------------------- */
-
-/* -------------------------
-   Small convenience: click a built station while in tempTrack to start/end snapped */
-map.on('click', (e)=>{
-  // if in tempTrack and no nodes and clicked near a built station, we auto-add snap node
-  if(mode === 'tempTrack' && temp.trackNodes.length === 0){
-    const sid = findNearestBuiltStationId(e.latlng, 20);
-    if(sid){
-      const st = DB.stations[sid];
-      addTempTrackNode(st.latlng, { snapStationId: sid });
-    }
-  }
-});
-
-/* -------------------------
-   helper format
-   ------------------------- */
-function formatYen(n){ return '¥' + Math.round(n).toLocaleString(); }
-station.on('click', function(e) {
-  if (currentMode === 'build-track') {
-    if (!tempTrackNodes.length) {
-      tempTrackNodes.push([station.getLatLng().lat, station.getLatLng().lng]);
-    } else {
-      const last = tempTrackNodes[tempTrackNodes.length - 1];
-      const end = [station.getLatLng().lat, station.getLatLng().lng];
-      const seg = L.polyline([last, end], {color: '#aaa', weight: 2, dashArray: '5,5'}).addTo(map);
-      tempTrackSegments.push(seg);
-      tempTrackNodes.push(end);
-    }
-  }
-});
-
+   Periodic HUD
+------------------------- */
+setInterval(updateHUD,500);
 </script>
-
 </body>
 </html>

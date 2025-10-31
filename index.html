@@ -137,23 +137,44 @@ function updateTempStationCost(){
 ------------------------- */
 function onMapClickTempTrack(e){
   if(mode!=='tempTrack') return;
-  // 既存駅にスナップ
   const sid = findNearestBuiltStationId(e.latlng,20);
   if(sid){ addTempTrackNode(DB.stations[sid].latlng,{snapStationId:sid}); }
   else { addTempTrackNode(e.latlng); }
 }
+
 function addTempTrackNode(latlng, opts={}){
   const icon=L.divIcon({ html:`<div class="tempSquare"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
   const marker=L.marker(latlng,{icon,draggable:true}).addTo(tempTrackLayer);
+
   const node={latlng,marker,snapStationId:opts.snapStationId||null};
-  marker.on('drag', ev=>{ node.latlng=ev.target.getLatLng(); updateTempPreview(); updateTempTrackCost(); });
-  temp.trackNodes.push(node); updateTempPreview(); updateTempTrackCost();
+
+  marker.on('drag', ev=>{
+    let pos = ev.target.getLatLng();
+    // 中間ノードも既存駅にスナップ
+    const snapId = findNearestBuiltStationId(pos,20);
+    if(snapId){
+      pos = DB.stations[snapId].latlng;
+      node.snapStationId = snapId;
+    } else {
+      node.snapStationId = null;
+    }
+    node.latlng = pos;
+    ev.target.setLatLng(pos);
+    updateTempPreview();
+    updateTempTrackCost();
+  });
+
+  temp.trackNodes.push(node);
+  updateTempPreview();
+  updateTempTrackCost();
 }
+
 function updateTempPreview(){
   if(temp.previewLine){ tempTrackLayer.removeLayer(temp.previewLine); temp.previewLine=null; }
   const pts=temp.trackNodes.map(n=>n.latlng);
   if(pts.length>=2){ temp.previewLine=L.polyline(pts,{color:'#999',dashArray:'6,4',weight:4}).addTo(tempTrackLayer); }
 }
+
 function updateTempTrackCost(){
   if(temp.trackNodes.length<2){ document.getElementById('tempCost').textContent='-'; return; }
   let totalKm=0;

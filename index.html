@@ -1,110 +1,90 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>交通会社経営ゲーム — 4タブプロトタイプ</title>
-
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>交通会社経営ゲーム — 路線追従路線作成プロトタイプ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-  html,body,#map { height:100%; margin:0; padding:0; font-family: "Noto Sans JP", system-ui, sans-serif; }
-  #map { position:absolute; inset:0; }
+  html,body,#map{height:100%;margin:0;padding:0;font-family:Noto Sans JP,system-ui,Helvetica,Arial;}
+  #map{position:absolute;inset:0}
 
-  /* タブ */
-  .tabs { position:absolute; left:12px; top:12px; z-index:1200; display:flex; gap:6px; }
-  .tab { padding:8px 12px; background:rgba(255,255,255,0.95); border-radius:8px; cursor:pointer; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.08); }
-  .tab.active { background:#2364a5; color:#fff; }
+  .tabs{position:absolute;left:12px;top:12px;z-index:1400;display:flex;gap:6px}
+  .tab{padding:8px 12px;background:rgba(255,255,255,0.95);border-radius:8px;cursor:pointer;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+  .tab.active{background:#2364a5;color:#fff}
 
-  /* パネル */
-  .panel { position:absolute; left:12px; top:56px; z-index:1200; width:300px; background:rgba(255,255,255,0.96); border-radius:10px; padding:12px; box-shadow:0 8px 18px rgba(0,0,0,0.12); font-size:13px; }
-  .panel.hidden { display:none; }
+  .panel{position:absolute;left:12px;top:56px;z-index:1400;width:320px;background:rgba(255,255,255,0.96);border-radius:10px;padding:12px;box-shadow:0 8px 20px rgba(0,0,0,0.12);font-size:13px}
+  .panel.hidden{display:none}
+  .panel h4{margin:0 0 8px 0}
+  .btn{display:block;width:100%;padding:8px;border-radius:8px;border:none;background:#2c7dce;color:white;font-weight:700;cursor:pointer;margin-bottom:8px}
+  .btn.secondary{background:#6c757d}
+  .modeActive{outline:3px solid rgba(44,125,206,0.14)}
+  .small{font-size:12px;color:#444}
+  .routeList{max-height:180px;overflow:auto;margin-top:8px;border-top:1px dashed #eee;padding-top:8px}
 
-  .panel h4 { margin:0 0 8px 0; font-size:15px; }
-
-  .btn { display:inline-block; width:100%; padding:8px; margin:6px 0; border-radius:8px; border:none; cursor:pointer; background:#2c7dce; color:white; font-weight:600; }
-  .btn.secondary { background:#6c757d; }
-  .modeActive { box-shadow:0 0 0 3px rgba(44,125,206,0.14); }
-
-  .small { font-size:12px; color:#444; margin-top:6px; }
-  label { display:block; margin-top:8px; font-size:13px; color:#333; }
-
-  /* HUD right */
-  .hud { position:absolute; right:12px; top:12px; z-index:1200; width:220px; background:rgba(255,255,255,0.96); padding:10px; border-radius:10px; box-shadow:0 8px 18px rgba(0,0,0,0.12); font-size:13px; }
-  .hud .row { display:flex; justify-content:space-between; margin:6px 0; }
-  input[type="text"], input[type="number"], select { width:100%; padding:6px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
-
-  /* route list */
-  .routeList { max-height:180px; overflow:auto; margin-top:8px; border-top:1px dashed #ddd; padding-top:8px; }
-  .routeItem { padding:6px; border-radius:6px; background:#f7f7f7; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .colorBox { width:18px; height:14px; border-radius:3px; border:1px solid #aaa; display:inline-block; vertical-align:middle; }
-
-  /* statistics mini chart placeholder */
-  #chart { width:100%; height:120px; background:#fff; border-radius:6px; border:1px solid #eee; margin-top:8px; display:flex; align-items:center; justify-content:center; color:#888; font-size:12px; }
+  .hud{position:absolute;right:12px;top:12px;z-index:1400;width:260px;background:rgba(255,255,255,0.96);padding:10px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.12);font-size:13px}
+  .hud .row{display:flex;justify-content:space-between;margin:6px 0}
+  input[type=color]{width:100%;height:34px;border:none;padding:0;margin:4px 0;border-radius:6px}
+  .colorBox{width:18px;height:14px;border-radius:3px;border:1px solid #aaa;display:inline-block;vertical-align:middle}
+  #chart{width:100%;height:110px;background:#fff;border-radius:6px;border:1px solid #eee;margin-top:8px;display:flex;align-items:center;justify-content:center;color:#888;font-size:12px}
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Tabs -->
-<div class="tabs" aria-hidden="false">
+<!-- tabs -->
+<div class="tabs">
   <div class="tab active" data-tab="build">建設メニュー</div>
   <div class="tab" data-tab="route">路線メニュー</div>
   <div class="tab" data-tab="vehicle">車両メニュー</div>
   <div class="tab" data-tab="stats">統計メニュー</div>
 </div>
 
-<!-- Build panel -->
+<!-- panels -->
 <div id="panel-build" class="panel">
   <h4>建設メニュー</h4>
   <button id="btn-place-station" class="btn">駅設置モード（¥200,000）</button>
   <button id="btn-lay-track" class="btn secondary">線路敷設モード（距離ごと）</button>
-  <button id="btn-add-commercial" class="btn">商業施設設置（駅を選択）</button>
-
-  <div class="small">操作：モードを選んでから地図を操作してください。線路敷設はクリック順に折れ点を置けます。</div>
+  <button id="btn-add-commercial" class="btn">商業施設設置（駅をクリック）</button>
+  <div class="small">線路敷設は地図をクリックして折れ点を置いてください。区間ごとに費用が発生します。Escで中止。</div>
 </div>
 
-<!-- Route panel -->
 <div id="panel-route" class="panel hidden">
   <h4>路線メニュー</h4>
-  <label>路線名<input type="text" id="route-name" placeholder="例）東線"></label>
-  <label>路線色<input type="color" id="route-color" value="#2364a5"></label>
-  <button id="btn-route-mode" class="btn">路線作成モード（駅を順に選択）</button>
-  <button id="btn-register-route" class="btn secondary" disabled>路線登録（環状に自動閉ループ）</button>
-
-  <div class="small" id="routeInfo">選択駅: なし</div>
-  <div class="routeList" id="registeredRoutes">
-    <!-- registered routes -->
-  </div>
+  <label>路線名: <input id="route-name" type="text" placeholder="例）東線" style="width:100%;padding:6px;border-radius:6px;border:1px solid #ccc"></label>
+  <label>路線色: <input id="route-color" type="color" value="#2364a5"></label>
+  <button id="btn-route-mode" class="btn">路線作成モード（駅を順にクリック）</button>
+  <button id="btn-register-route" class="btn secondary" disabled>路線登録（環状で閉ループ）</button>
+  <div id="routeInfo" class="small" style="margin-top:6px">選択駅: なし</div>
+  <div class="routeList" id="registeredRoutes"></div>
 </div>
 
-<!-- Vehicle panel -->
 <div id="panel-vehicle" class="panel hidden">
   <h4>車両メニュー</h4>
-  <label>車種<select id="vehicle-type">
-    <option value="standard">標準車両 — ¥500,000</option>
-    <option value="express">快速車両 — ¥1,200,000</option>
-  </select></label>
-  <label>割当路線<select id="vehicle-route"></select></label>
+  <label>車種:
+    <select id="vehicle-type" style="width:100%;padding:6px;border-radius:6px;border:1px solid #ccc">
+      <option value="standard">標準車両 ¥500,000</option>
+      <option value="express">快速車両 ¥1,200,000</option>
+    </select>
+  </label>
+  <label>割当路線:
+    <select id="vehicle-route" style="width:100%;padding:6px;border-radius:6px;border:1px solid #ccc">
+      <option value="">（選択）</option>
+    </select>
+  </label>
   <button id="btn-buy-vehicle" class="btn">車両購入して割当</button>
-
-  <div class="small">購入した車両は選択した路線に沿って順次走行します（簡易アニメ）。</div>
-  <div style="margin-top:8px">
-    <strong>保有車両:</strong>
-    <div id="vehicleList" style="margin-top:6px"></div>
-  </div>
+  <div class="small" style="margin-top:8px">購入した車両はルートに沿って自動で走行します（簡易アニメ）。</div>
+  <div id="vehicleList" style="margin-top:8px"></div>
 </div>
 
-<!-- Stats panel -->
 <div id="panel-stats" class="panel hidden">
   <h4>統計メニュー</h4>
   <div>現在資金: <strong id="stat-funds">¥0</strong></div>
-  <div style="margin-top:6px">簡易グラフ（収支/分の履歴）</div>
-  <div id="chart">統計はここに表示</div>
-  <div style="margin-top:8px" class="small">※データはプロトタイプの簡易シミュレーションから取得</div>
+  <div id="chart">収支履歴（簡易グラフ）</div>
+  <div class="small">車両数や路線ごとの収支は後で細かく出せます。</div>
 </div>
 
-<!-- Right HUD -->
 <div class="hud">
   <div class="row"><div>会社名</div><div><strong>YMS Transit</strong></div></div>
   <div class="row"><div>資金</div><div id="hud-funds">¥0</div></div>
@@ -115,211 +95,216 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ------------------------------
-   Constants & simple economy
-   ------------------------------ */
+/* -----------------------------
+   定数・シンプル経済
+   ----------------------------- */
 const COST = {
   station: 200000,
   trackPerKm: 150000,
   commercial: 300000,
-  vehicle: { standard: 500000, express: 1200000 }
+  vehicle: { standard:500000, express:1200000 }
 };
 
-let SIM = {
-  funds: 10000000,
-  tickMs: 1000,
-  historyCashflow: []
-};
+let SIM = { funds:10000000, historyCashflow:[] };
 
-/* ------------------------------
-   Map init
-   ------------------------------ */
+/* -----------------------------
+   マップ初期化
+   ----------------------------- */
 const map = L.map('map').setView([35.681236,139.767125], 11);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
 const stationLayer = L.layerGroup().addTo(map);
 const trackLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 
-/* ------------------------------
-   Data structures
-   ------------------------------ */
+/* -----------------------------
+   データ構造
+   ----------------------------- */
 const DB = {
-  stations: {},     // id -> {id, marker, latlng, commercialLevel}
-  tracks: [],       // list of polylines (raw built track segments) {polyline, stationsConnected: [a,b], lengthKm}
-  routes: [],       // registered routes (circular/loop) {id, name, color, stationIds:[], polylineOutbound, polylineInbound, vehicles:[]}
-  vehicles: []      // vehicles with assigned route
+  stations:{},   // id -> {id, marker, latlng, commercial}
+  tracks:[],     // {polyline, latlngs, lengthKm}
+  routes:[],     // {id, name, color, stationIds, polyOut, polyIn, vehicles:[]}
+  vehicles:[]    // {id, type, routeId, marker, index}
 };
 let nextIds = { station:1, route:1, vehicle:1 };
 
-/* ------------------------------
-   UI: Tabs
-   ------------------------------ */
+/* -----------------------------
+   UI: tabs
+   ----------------------------- */
 document.querySelectorAll('.tabs .tab').forEach(t=>{
   t.addEventListener('click', ()=> {
     document.querySelectorAll('.tabs .tab').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    // show/hide panels
     document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
     document.getElementById('panel-' + t.dataset.tab).classList.remove('hidden');
   });
 });
 
-/* ------------------------------
-   HUD & helpers
-   ------------------------------ */
+/* -----------------------------
+   HUD 更新
+   ----------------------------- */
 function updateHUD(){
   document.getElementById('hud-funds').textContent = '¥' + Math.round(SIM.funds).toLocaleString();
   document.getElementById('hud-stations').textContent = Object.keys(DB.stations).length;
   document.getElementById('hud-routes').textContent = DB.routes.length;
   document.getElementById('hud-vehicles').textContent = DB.vehicles.length;
   document.getElementById('stat-funds').textContent = '¥' + Math.round(SIM.funds).toLocaleString();
-  // update vehicle route select
-  const sel = document.getElementById('vehicle-route');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">（選択）</option>';
-  DB.routes.forEach(r => {
-    const opt = document.createElement('option'); opt.value = r.id; opt.textContent = `#${r.id} ${r.name}`;
-    sel.appendChild(opt);
-  });
-  if(prev) sel.value = prev;
 }
 updateHUD();
 
-/* ------------------------------
-   Mode handling (build / route / vehicle / stats)
-   ------------------------------ */
-let mode = null; // 'place-station','lay-track','edit-track','route-create','route-add-station', ...
-let tempTrackPoints = [];     // during lay-track
-let tempRouteStations = [];   // during route-create (ordered station objects)
-let tempRoutePreview = null;  // polyline preview during route creation
+/* -----------------------------
+   モード管理
+   ----------------------------- */
+let mode = null; // 'place-station','lay-track','place-commercial','route-create','add-station-route'
+let tempTrackPoints = [];
+let tempPreviewLine = null;
+let tempRouteStations = [];
+let tempRoutePreview = null;
 
-const infoBox = document.getElementById('infoBox');
-function setMode(m, message){
-  mode = m; infoBox.textContent = message || '';
-  // highlight active build buttons
-  document.querySelectorAll('#panel-build .btn, #panel-route .btn').forEach(b=>b.classList.remove('modeActive'));
+function setMode(m, msg){
+  mode = m;
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('modeActive'));
+  // mark active
   if(m==='place-station') document.getElementById('btn-place-station').classList.add('modeActive');
   if(m==='lay-track') document.getElementById('btn-lay-track').classList.add('modeActive');
   if(m==='route-create') document.getElementById('btn-route-mode').classList.add('modeActive');
+  if(m==='place-commercial') document.getElementById('btn-add-commercial').classList.add('modeActive');
+  // info
+  document.getElementById('routeInfo').textContent = '選択駅: なし';
+  if(msg) document.getElementById('panel-build').querySelector('.small')?.textContent = msg;
 }
 
-/* ------------------------------
-   Station placement (建設メニュー)
-   ------------------------------ */
-document.getElementById('btn-place-station').addEventListener('click', ()=> {
-  setMode('place-station', '駅設置モード：地図上クリックで駅を建設します（¥200,000）');
-});
+/* -----------------------------
+   建設: 駅設置
+   ----------------------------- */
+document.getElementById('btn-place-station').addEventListener('click', ()=> setMode('place-station', '駅設置モード：地図クリックで駅を建設（¥200,000）'));
+
 map.on('click', function(e){
   if(mode === 'place-station'){
-    if(SIM.funds < COST.station){ alert('資金不足です'); return; }
+    if(SIM.funds < COST.station){ alert('資金不足'); return; }
+    if(!confirm(`駅を建設しますか？ 費用 ${COST.station.toLocaleString()} 円`)) return;
     SIM.funds -= COST.station;
     const id = nextIds.station++;
-    const icon = L.divIcon({ className:'station-icon', html:`<div style="width:14px;height:14px;border-radius:50%;background:#2c7dce;border:2px solid white;"></div>`, iconSize:[18,18], iconAnchor:[9,9]});
-    const marker = L.marker(e.latlng, { icon: icon, draggable:true }).addTo(stationLayer);
+    const icon = L.divIcon({ className:'', html:`<div style="width:14px;height:14px;border-radius:50%;background:#2c7dce;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`, iconSize:[18,18], iconAnchor:[9,9]});
+    const marker = L.marker(e.latlng, { icon, draggable:true }).addTo(stationLayer);
     marker.on('click', ()=> onStationClicked(id));
-    marker.on('dragend', ()=> { DB.stations[id].latlng = marker.getLatLng(); updateHUD(); });
-    DB.stations[id] = { id, marker, latlng: e.latlng, commercial: 0 };
+    marker.on('dragend', ()=> { DB.stations[id].latlng = marker.getLatLng(); });
+    DB.stations[id] = { id, marker, latlng: e.latlng, commercial:0 };
     updateHUD();
   }
 });
 
-/* ------------------------------
-   Track laying (建設メニュー)
-   - Click points sequentially; each segment created and charged by length
-   ------------------------------ */
+/* -----------------------------
+   建設: 線路敷設（折れ点追加） — 各区間で課金
+   ----------------------------- */
 document.getElementById('btn-lay-track').addEventListener('click', ()=> {
   tempTrackPoints = [];
-  setMode('lay-track','線路敷設モード：マップをクリックして折れ点を追加、Escで中止。駅の場所をクリックして線を引く場合は駅を選択してください。');
+  if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
+  setMode('lay-track', '線路敷設モード：折れ点をクリックで追加。Escで中止。');
 });
+
 map.on('click', function(e){
   if(mode === 'lay-track'){
-    // append point
     tempTrackPoints.push(e.latlng);
-    // show a preview line (temporary)
-    if(window._tempPreviewLine) map.removeLayer(window._tempPreviewLine);
-    window._tempPreviewLine = L.polyline(tempTrackPoints,{color:'#888',dashArray:'6,4'}).addTo(trackLayer);
-    // if at least 2 pts, commit last segment and charge cost
+    if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine = null; }
+    tempPreviewLine = L.polyline(tempTrackPoints, { color:'#999', dashArray:'6,4' }).addTo(trackLayer);
     if(tempTrackPoints.length >= 2){
+      // charge for last segment
       const a = tempTrackPoints[tempTrackPoints.length-2], b = tempTrackPoints[tempTrackPoints.length-1];
       const distKm = map.distance(a,b)/1000;
       const cost = Math.round(distKm * COST.trackPerKm);
-      if(SIM.funds < cost){ alert('資金不足でこれ以上敷設できません'); tempTrackPoints.pop(); map.removeLayer(window._tempPreviewLine); window._tempPreviewLine = null; return; }
-      if(!confirm(`この区間を敷設しますか？ 距離 ${distKm.toFixed(2)} km / 費用 ${cost.toLocaleString()} 円`)){ tempTrackPoints.pop(); map.removeLayer(window._tempPreviewLine); window._tempPreviewLine=null; return; }
+      if(!confirm(`この区間を敷設しますか？ 距離 ${distKm.toFixed(2)} km / 費用 ${cost.toLocaleString()} 円（OKで確定）`)){
+        tempTrackPoints.pop();
+        if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
+        return;
+      }
+      if(SIM.funds < cost){ alert('資金不足で敷設できません'); tempTrackPoints.pop(); if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; } return; }
       SIM.funds -= cost;
-      const seg = L.polyline([a,b],{color:'#999',weight:5,opacity:0.8}).addTo(trackLayer);
-      DB.tracks.push({ polyline: seg, stationsConnected: [], lengthKm: distKm });
-      // leave temp preview for further extension
-      if(window._tempPreviewLine){ map.removeLayer(window._tempPreviewLine); window._tempPreviewLine = null; }
-      tempTrackPoints = [b]; // continue from last point
+      const seg = L.polyline([a,b], { color:'#777', weight:5, opacity:0.85 }).addTo(trackLayer);
+      DB.tracks.push({ polyline: seg, latlngs: [a,b], lengthKm: distKm });
+      // keep last point to allow chaining
+      tempTrackPoints = [b];
+      if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
       updateHUD();
     }
   }
 });
 
-/* Allow pressing Esc to cancel lay-track */
-window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape'){ tempTrackPoints = []; if(window._tempPreviewLine) { map.removeLayer(window._tempPreviewLine); window._tempPreviewLine=null; } }});
+/* Esc cancels lay-track */
+window.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape'){
+    tempTrackPoints = []; if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
+  }
+});
 
-/* ------------------------------
-   Station click behavior (route creation or connect)
-   ------------------------------ */
+/* allow quick connect by clicking station during lay-track */
 function onStationClicked(id){
-  if(mode === 'route-create'){
-    // add to temp route
-    const st = DB.stations[id];
-    tempRouteStations.push(st);
-    refreshRoutePreview();
-    document.getElementById('btn-register-route').disabled = tempRouteStations.length < 2;
-    updateRouteInfoText();
+  const st = DB.stations[id];
+  if(mode === 'lay-track'){
+    if(tempTrackPoints.length === 0) {
+      tempTrackPoints.push(st.latlng);
+      if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
+      tempPreviewLine = L.polyline(tempTrackPoints, { color:'#999', dashArray:'6,4' }).addTo(trackLayer);
+    } else {
+      const a = tempTrackPoints[tempTrackPoints.length-1], b = st.latlng;
+      const distKm = map.distance(a,b)/1000;
+      const cost = Math.round(distKm * COST.trackPerKm);
+      if(!confirm(`この区間を敷設して駅#${id}に接続しますか？ 距離 ${distKm.toFixed(2)} km / 費用 ${cost.toLocaleString()} 円`)) return;
+      if(SIM.funds < cost){ alert('資金不足'); return; }
+      SIM.funds -= cost;
+      const seg = L.polyline([a,b], { color:'#777', weight:5, opacity:0.85 }).addTo(trackLayer);
+      DB.tracks.push({ polyline:seg, latlngs:[a,b], lengthKm: distKm });
+      tempTrackPoints = []; if(tempPreviewLine){ map.removeLayer(tempPreviewLine); tempPreviewLine=null; }
+      updateHUD();
+    }
   } else if(mode === 'place-commercial'){
-    // build commercial facility
     if(DB.stations[id].commercial >= 1){ alert('既に商業施設があります'); return; }
     if(SIM.funds < COST.commercial){ alert('資金不足'); return; }
     if(!confirm('この駅に商業施設を建設しますか？')) return;
     SIM.funds -= COST.commercial;
     DB.stations[id].commercial = 1;
-    DB.stations[id].marker.getElement().querySelector('div').style.background = '#e67e22';
+    // change marker color slightly
+    const el = DB.stations[id].marker.getElement(); if(el) el.querySelector('div').style.background = '#e67e22';
     updateHUD();
-  } else if(mode === 'lay-track'){
-    // Quick connect: if at least one temp point exists, and clicked station is not same, connect
-    if(tempTrackPoints.length >= 1){
-      const last = tempTrackPoints[tempTrackPoints.length-1];
-      const st = DB.stations[id];
-      const a = last, b = st.latlng;
-      const distKm = map.distance(a,b)/1000;
-      const cost = Math.round(distKm * COST.trackPerKm);
-      if(SIM.funds < cost){ alert('資金不足'); return; }
-      if(!confirm(`駅#${id}まで接続しますか？ 距離 ${distKm.toFixed(2)} km / 費用 ${cost.toLocaleString()} 円`)) return;
-      SIM.funds -= cost;
-      const seg = L.polyline([a,b],{color:'#999',weight:5,opacity:0.8}).addTo(trackLayer);
-      DB.tracks.push({ polyline: seg, stationsConnected: [], lengthKm: distKm });
-      // optionally mark that this segment connects stations (simple)
-      updateHUD();
-      tempTrackPoints = []; if(window._tempPreviewLine){ map.removeLayer(window._tempPreviewLine); window._tempPreviewLine=null; }
-    }
+  } else if(mode === 'route-create'){
+    // add station to temp route
+    tempRouteStations.push(DB.stations[id]);
+    refreshRoutePreview();
+    document.getElementById('btn-register-route').disabled = tempRouteStations.length < 2;
+    updateRouteInfoText();
   }
 }
 
-/* ------------------------------
-   Route creation & registration (路線メニュー)
-   - We will auto-close loop to make route circular.
-   - For "上下線", we create two polylines: outbound = station order, inbound = reverse order.
-   - Route polyline will be drawn following station latlngs, but we also snap to nearest track points if track exists (approx).
-   ------------------------------ */
-document.getElementById('btn-route-mode').addEventListener('click', ()=> {
+/* commercial build btn */
+document.getElementById('btn-add-commercial').addEventListener('click', ()=> setMode('place-commercial', '商業施設設置：駅をクリックして建設（¥300,000）'));
+
+/* -----------------------------
+   路線作成: track沿いに路線を描く（主要ロジック）
+   - ユーザーが駅を順にクリックして tempRouteStations に追加
+   - 登録時に各隣接駅ペアについて「同じ track に沿っているか」を探し、
+     見つかれば track の最短経路（スライス）をつないで路線ポリラインを作成。
+   - 見つからないペアがあれば登録不可（未接続）。
+   ----------------------------- */
+document.getElementById('btn-route-mode').addEventListener('click', ()=>{
   tempRouteStations = [];
-  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview = null; }
-  setMode('route-create','路線作成モード：駅を順にクリックしてルートを選択。登録時に自動的に環状で閉ループします。');
+  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview=null; }
+  setMode('route-create', '路線作成：駅を順にクリック（2駅以上）。登録時に閉ループ化します。');
   document.getElementById('btn-register-route').disabled = true;
 });
 
 function refreshRoutePreview(){
-  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview = null; }
+  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview=null; }
   if(tempRouteStations.length >= 2){
-    const latlngs = tempRouteStations.map(s => s.latlng);
-    // auto-close by connecting last back to first
-    const closed = latlngs.concat([latlngs[0]]);
-    tempRoutePreview = L.polyline(closed, { color: document.getElementById('route-color').value, weight:4, opacity:0.8, dashArray:'6,4' }).addTo(routeLayer);
+    // build preview by concatenating segment selections if possible, otherwise straight lines
+    const previewPoints = buildRoutePolylinePoints(tempRouteStations.map(s=>s.id), true); // try to follow tracks
+    if(previewPoints){
+      tempRoutePreview = L.polyline(previewPoints, { color: document.getElementById('route-color').value, weight:4, opacity:0.7, dashArray:'6,4' }).addTo(routeLayer);
+    } else {
+      // fallback: straight connection preview
+      const pts = tempRouteStations.map(s=>s.latlng);
+      tempRoutePreview = L.polyline(pts, { color:document.getElementById('route-color').value, weight:4, opacity:0.5, dashArray:'6,4' }).addTo(routeLayer);
+    }
   }
 }
 
@@ -329,122 +314,193 @@ function updateRouteInfoText(){
   else el.textContent = '選択駅: ' + tempRouteStations.map(s=>s.id).join(' → ');
 }
 
-/* Register route: create outbound and inbound polylines (closed loop), vehicles list empty */
-document.getElementById('btn-register-route').addEventListener('click', ()=> {
-  if(tempRouteStations.length < 2){ alert('駅2つ以上必要'); return; }
-  // ensure closed loop (append first to end)
-  const name = (document.getElementById('route-name').value || `Route#${nextIds.route}`);
+/* buildRoutePolylinePoints:
+   - ids: array of station ids in order
+   - tries to find, for each adjacent pair, a track in DB.tracks which passes near both stations
+   - if found, extracts the slice of latlngs between nearest points and concatenates
+   - returns array of latlngs (closed by first point appended) or null if any pair not connected
+*/
+function buildRoutePolylinePoints(ids, forPreview=false){
+  const out = [];
+  for(let i=0;i<ids.length;i++){
+    const aId = ids[i];
+    const bId = (i+1 < ids.length) ? ids[i+1] : null;
+    if(bId === null){
+      // end: for preview when closed automatically append first later
+      out.push(DB.stations[aId].latlng);
+      continue;
+    }
+    const A = DB.stations[aId].latlng;
+    const B = DB.stations[bId].latlng;
+    // find a track that is close to both A and B
+    let found = false;
+    for(const tr of DB.tracks){
+      const nearestA = nearestPointOnPolyline(tr.polyline.getLatLngs(), A);
+      const nearestB = nearestPointOnPolyline(tr.polyline.getLatLngs(), B);
+      const dA = map.distance(nearestA.point, A);
+      const dB = map.distance(nearestB.point, B);
+      // threshold: 80 meters
+      if(dA < 80 && dB < 80){
+        // slice indices between nearestA.index and nearestB.index in proper order
+        let idxA = nearestA.index, idxB = nearestB.index;
+        const pts = tr.polyline.getLatLngs();
+        if(idxA <= idxB){
+          const slice = pts.slice(idxA, idxB+1);
+          // if out empty or last point same as slice[0], concat without duplicate
+          if(out.length === 0) out.push(...slice);
+          else {
+            if(equalsLatLng(out[out.length-1], slice[0])) out.push(...slice.slice(1));
+            else out.push(...slice);
+          }
+        } else {
+          // reverse slice
+          const slice = pts.slice(idxB, idxA+1).reverse();
+          if(out.length === 0) out.push(...slice);
+          else {
+            if(equalsLatLng(out[out.length-1], slice[0])) out.push(...slice.slice(1));
+            else out.push(...slice);
+          }
+        }
+        found = true;
+        break;
+      }
+    }
+    if(!found){
+      // Try direct straight connection as fallback for preview only
+      if(forPreview){
+        if(out.length === 0) out.push(A);
+        out.push(B);
+        continue;
+      }
+      return null; // failed to find connecting track
+    }
+  }
+  // close loop by appending first point if not already
+  if(out.length && !equalsLatLng(out[0], out[out.length-1])) out.push(out[0]);
+  return out;
+}
+
+/* nearestPointOnPolyline: returns {point:LatLng, index:vertexIndex} where index is nearest vertex idx */
+function nearestPointOnPolyline(latlngs, target){
+  let minD = Infinity, idx = 0, nearest = latlngs[0];
+  latlngs.forEach((p,i)=>{
+    const d = map.distance(p, target);
+    if(d < minD){ minD = d; idx = i; nearest = p; }
+  });
+  return { point: nearest, index: idx, dist: minD };
+}
+function equalsLatLng(a,b){ return Math.abs(a.lat-b.lat)<1e-6 && Math.abs(a.lng-b.lng)<1e-6; }
+
+/* Register route: ensure closure and create outbound/inbound polylines (up/down lines) */
+document.getElementById('btn-register-route').addEventListener('click', ()=>{
+  if(tempRouteStations.length < 2){ alert('2駅以上選択してください'); return; }
+  // try to build route points following tracks
+  const ids = tempRouteStations.map(s=>s.id);
+  // ensure closure by adding first to end
+  const idsClosed = ids.concat([ids[0]]);
+  const pts = buildRoutePolylinePoints(idsClosed, false);
+  if(!pts){ alert('選択駅間が既存の線路でつながっていません。建設メニューで線路をつないでください。'); return; }
+  // create outbound and inbound (reverse)
   const color = document.getElementById('route-color').value;
-  const stationIds = tempRouteStations.map(s=>s.id);
-  // create outward polyline along station latlngs (closed)
-  const latlngsOut = tempRouteStations.map(s=>s.latlng).concat([tempRouteStations[0].latlng]);
-  const latlngsIn = latlngsOut.slice(0, -1).slice().reverse().concat([tempRouteStations[tempRouteStations.length-1].latlng]); // reverse for inbound
-  const polyOut = L.polyline(latlngsOut, { color: color, weight:5, opacity:0.95 }).addTo(routeLayer);
-  const polyIn = L.polyline(latlngsIn, { color: shadeColor(color, -25), weight:5, opacity:0.95 }).addTo(routeLayer); // slightly darker for inbound
-  const route = { id: nextIds.route++, name, color, stationIds, polyOut, polyIn, vehicles: [] };
+  const polyOut = L.polyline(pts, { color: color, weight:5, opacity:0.95 }).addTo(routeLayer);
+  const ptsIn = pts.slice(0, pts.length-1).slice().reverse().concat([pts[0]]);
+  const polyIn = L.polyline(ptsIn, { color: shadeColor(color, -25), weight:5, opacity:0.95 }).addTo(routeLayer);
+  const route = { id: nextIds.route++, name: (document.getElementById('route-name').value || `Route#${nextIds.route}`), color, stationIds: ids, polyOut, polyIn, vehicles: [] };
   DB.routes.push(route);
-  // add to UI list
   addRouteToList(route);
   // reset temp
   tempRouteStations = [];
-  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview=null; }
+  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview = null; }
   document.getElementById('btn-register-route').disabled = true;
   updateHUD();
-  alert('路線を登録しました（上下線が作成されます）');
+  alert('路線登録完了（上下線作成）');
 });
 
-/* Helper: add route to left panel list with edit/delete */
+/* -----------------------------
+   Utility: color shading
+   ----------------------------- */
+function shadeColor(hex, percent) {
+  let f=parseInt(hex.slice(1),16),t=percent<0?0:255,p=Math.abs(percent)/100;
+  let R=f>>16,G=f>>8&0x00FF,B=f&0x0000FF;
+  let nR=Math.round((t-R)*p)+R,nG=Math.round((t-G)*p)+G,nB=Math.round((t-B)*p)+B;
+  return "#" + ((1<<24)+(nR<<16)+(nG<<8)+nB).toString(16).slice(1);
+}
+
+/* -----------------------------
+   Route list UI
+   ----------------------------- */
 function addRouteToList(route){
+  const list = document.getElementById('registeredRoutes');
   const wrap = document.createElement('div'); wrap.className='routeItem';
-  const left = document.createElement('div'); left.innerHTML = `<span class="colorBox" style="background:${route.color}"></span> <strong>${route.name}</strong> (#${route.id})`;
+  wrap.style.display='flex'; wrap.style.justifyContent='space-between'; wrap.style.alignItems='center';
+  wrap.style.padding='6px'; wrap.style.borderRadius='6px'; wrap.style.background='#fafafa'; wrap.style.marginBottom='6px';
+  const left = document.createElement('div');
+  left.innerHTML = `<span class="colorBox" style="background:${route.color}"></span> <strong>${route.name}</strong> (#${route.id})`;
   const right = document.createElement('div');
-  const btnEdit = document.createElement('button'); btnEdit.textContent='編集'; btnEdit.style.marginRight='6px';
-  const btnDel  = document.createElement('button'); btnDel.textContent='削除';
-  btnEdit.onclick = ()=> editRouteUI(route);
-  btnDel.onclick = ()=> {
+  const editBtn = document.createElement('button'); editBtn.textContent='編集'; editBtn.style.marginRight='6px';
+  const delBtn = document.createElement('button'); delBtn.textContent='削除';
+  editBtn.onclick = ()=> {
+    const newName = prompt('路線名を入力', route.name); if(newName!==null) route.name=newName;
+    const newCol = prompt('カラーコード (#rrggbb) を入力', route.color); if(newCol){ route.color=newCol; route.polyOut.setStyle({color:newCol}); route.polyIn.setStyle({color:shadeColor(newCol,-25)}); }
+    // rebuild list visuals
+    document.getElementById('registeredRoutes').innerHTML = ''; DB.routes.forEach(r=>addRouteToList(r));
+  };
+  delBtn.onclick = ()=> {
     if(!confirm('路線を削除しますか？')) return;
     map.removeLayer(route.polyOut); map.removeLayer(route.polyIn);
-    DB.routes = DB.routes.filter(r=>r.id !== route.id);
+    DB.routes = DB.routes.filter(r=> r.id !== route.id);
     wrap.remove();
     updateHUD();
   };
-  right.appendChild(btnEdit); right.appendChild(btnDel);
+  right.appendChild(editBtn); right.appendChild(delBtn);
   wrap.appendChild(left); wrap.appendChild(right);
-  document.getElementById('registeredRoutes').appendChild(wrap);
+  list.appendChild(wrap);
 }
 
-/* Route edit UI (simple: rename, recolor) */
-function editRouteUI(route){
-  const newName = prompt('路線名を入力', route.name);
-  if(newName !== null) route.name = newName;
-  const newColor = prompt('16進カラーコード入力', route.color);
-  if(newColor){
-    route.color = newColor;
-    route.polyOut.setStyle({ color: newColor });
-    route.polyIn.setStyle({ color: shadeColor(newColor, -25) });
-    // update list color boxes
-    const boxes = document.querySelectorAll('.routeItem .colorBox');
-    // naive update: rebuild list
-    document.getElementById('registeredRoutes').innerHTML = '';
-    DB.routes.forEach(r=> addRouteToList(r));
-  }
-  updateHUD();
+/* -----------------------------
+   Add station on route: (建設メニューに移す)
+   - Implemented by mode 'add-station-route' (not wired to separate btn here)
+   ----------------------------- */
+document.getElementById('btn-add-commercial').addEventListener('dblclick', ()=> alert('ダブルクリックでのショートカット（開発用）'));
+
+/* -----------------------------
+   車両メニュー: 購入・割当・表示
+   ----------------------------- */
+function rebuildVehicleRouteSelect(){
+  const sel = document.getElementById('vehicle-route'); sel.innerHTML = '<option value="">（選択）</option>';
+  DB.routes.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=`#${r.id} ${r.name}`; sel.appendChild(o); });
 }
-
-/* Utility: shade color */
-function shadeColor(hex, percent) {
-  // hex: "#rrggbb", percent -100..100
-  let f=parseInt(hex.slice(1),16),t=percent<0?0:255,p= Math.abs(percent)/100;
-  let R=f>>16, G=f>>8&0x00FF, B=f&0x0000FF;
-  let nR = Math.round((t-R)*p)+R, nG = Math.round((t-G)*p)+G, nB = Math.round((t-B)*p)+B;
-  return "#" + ( (1<<24) + (nR<<16) + (nG<<8) + nB ).toString(16).slice(1);
-}
-
-/* ------------------------------
-   Route: "add station on route" — implemented as building menu choice
-   (but you asked building stations be in construction menu; still provide convenient function)
-   ------------------------------ */
-document.getElementById('btn-add-commercial').addEventListener('click', ()=> { setMode('place-commercial','商業施設設置：駅をクリックして建設（¥300,000）'); });
-
-/* ------------------------------
-   Vehicle menu: buy & assign
-   ------------------------------ */
-document.getElementById('btn-buy-vehicle').addEventListener('click', ()=> {
+document.getElementById('btn-buy-vehicle').addEventListener('click', ()=>{
   const type = document.getElementById('vehicle-type').value;
   const routeId = parseInt(document.getElementById('vehicle-route').value || 0);
-  if(!routeId){ alert('割当路線を選択してください'); return; }
+  if(!routeId){ alert('割当路線を選んでください'); return; }
   const price = COST.vehicle[type];
   if(SIM.funds < price){ alert('資金不足'); return; }
+  if(!confirm(`車両を購入しますか？ 種類:${type} 価格:¥${price.toLocaleString()}`)) return;
   SIM.funds -= price;
-  const vId = nextIds.vehicle++;
-  // create vehicle object, and start animation on assigned route's outbound polyline
-  const route = DB.routes.find(r => r.id === routeId);
+  const route = DB.routes.find(r=> r.id === routeId);
   if(!route){ alert('路線が見つかりません'); return; }
   const pts = route.polyOut.getLatLngs();
-  const vehMarker = L.circleMarker(pts[0], { radius:6, color:'#ff2e2e', fill:true, fillOpacity:1 }).addTo(vehicleLayer);
-  const vehicle = { id: vId, type, routeId, marker: vehMarker, posIndex:0 };
-  DB.vehicles.push(vehicle);
-  route.vehicles.push(vehicle);
+  const mid = pts[0] || L.latLng(35.68,139.76);
+  const marker = L.circleMarker(mid, { radius:6, color:'#ff2e2e', fill:true, fillOpacity:1 }).addTo(vehicleLayer);
+  const v = { id: nextIds.vehicle++, type, routeId, marker, index:0 };
+  DB.vehicles.push(v); route.vehicles.push(v);
   updateHUD();
 });
 
-/* ------------------------------
-   Vehicle animation loop (simple)
-   ------------------------------ */
+/* -----------------------------
+   Simulation tick: move vehicles & income
+   ----------------------------- */
 setInterval(()=> {
-  // per-tick simple money inflow from passengers (fake model): routes earn tiny income per vehicle per tick
+  // simple income: each vehicle generates small income per tick
   let income = 0;
   DB.routes.forEach(route=>{
-    const numVeh = route.vehicles.length;
-    if(numVeh>0){
-      income += 50 * numVeh; // 50 yen per tick per vehicle (placeholder)
-    }
-    // move vehicles on this route
     route.vehicles.forEach(v=>{
       const pts = route.polyOut.getLatLngs();
       if(pts.length < 2) return;
-      v.posIndex = (v.posIndex + 1) % pts.length;
-      v.marker.setLatLng(pts[v.posIndex]);
+      v.index = (v.index + 1) % pts.length;
+      v.marker.setLatLng(pts[v.index]);
+      income += 40; // placeholder
     });
   });
   SIM.funds += income;
@@ -454,63 +510,61 @@ setInterval(()=> {
   renderChart();
 }, 1000);
 
-/* ------------------------------
-   Chart render (very simple bar graph)
-   ------------------------------ */
+/* -----------------------------
+   Chart (簡易)
+   ----------------------------- */
 function renderChart(){
   const chart = document.getElementById('chart');
   const data = SIM.historyCashflow;
+  chart.innerHTML = '';
   if(data.length === 0){ chart.textContent = 'データなし'; return; }
-  chart.innerHTML = ''; // clear
-  // create small inline bars
   const max = Math.max(...data);
-  const wrap = document.createElement('div'); wrap.style.display='flex'; wrap.style.alignItems='end'; wrap.style.gap='2px'; wrap.style.height='100%'; wrap.style.padding='6px';
+  const wrap = document.createElement('div'); wrap.style.display='flex'; wrap.style.alignItems='end'; wrap.style.height='100%'; wrap.style.gap='2px'; wrap.style.padding='6px';
   data.forEach(d=>{
     const bar = document.createElement('div');
-    bar.style.width='6px';
+    bar.style.width = '6px';
     bar.style.height = (d / (max || 1) * 100) + '%';
     bar.style.background = '#2c7dce';
-    bar.title = d + ' /min';
+    bar.title = String(d);
     wrap.appendChild(bar);
   });
   chart.appendChild(wrap);
 }
 
-/* ------------------------------
-   Utility & UI glue
-   ------------------------------ */
-// Populate vehicle-route select when routes change
-function rebuildRouteSelect(){
-  const sel = document.getElementById('vehicle-route');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">（選択）</option>';
-  DB.routes.forEach(r=> {
-    const opt = document.createElement('option'); opt.value = r.id; opt.textContent = `#${r.id} ${r.name}`; sel.appendChild(opt);
+/* -----------------------------
+   Helper: find nearest point on polyline (vertex-based)
+   ----------------------------- */
+function nearestPointOnPolylineVertices(latlngs, point){
+  let minD = Infinity, minIdx = 0, nearest = latlngs[0];
+  latlngs.forEach((p,i)=>{
+    const d = map.distance(p, point);
+    if(d < minD){ minD = d; minIdx = i; nearest = p; }
   });
-  if(prev) sel.value = prev;
+  return { point: nearest, index: minIdx, dist: minD };
 }
 
-// run periodically to sync UI
-setInterval(()=> {
-  updateHUD();
-  rebuildRouteSelect();
-}, 1000);
-
-/* ------------------------------
-   Small improvements: reset route-create on right-click
-   ------------------------------ */
+/* -----------------------------
+   Right-click resets temp route selection
+   ----------------------------- */
 map.on('contextmenu', ()=> {
-  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview=null; }
   tempRouteStations = [];
+  if(tempRoutePreview){ map.removeLayer(tempRoutePreview); tempRoutePreview=null; }
   document.getElementById('btn-register-route').disabled = true;
   updateRouteInfoText();
 });
 
-/* ------------------------------
-   Helper: show message initially
-   ------------------------------ */
-infoBox.textContent = '建設タブで駅・線路を作り、路線タブで路線を登録。車両タブで車両購入。統計タブで履歴確認。';
-updateHUD();
+/* -----------------------------
+   Periodic UI sync for route select & HUD
+   ----------------------------- */
+setInterval(()=> {
+  rebuildVehicleRouteSelect();
+  updateHUD();
+}, 1000);
+
+/* -----------------------------
+   Initial hint
+   ----------------------------- */
+document.getElementById('panel-build').querySelector('.small').textContent = '駅設置→線路敷設→路線作成 の順に操作してください。路線作成は既存線路に沿って閉ループで登録されます。';
 
 </script>
 </body>

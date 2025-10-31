@@ -387,6 +387,20 @@ map.on('click', (e)=>{
    helper format
    ------------------------- */
 function formatYen(n){ return '¥' + Math.round(n).toLocaleString(); }
+station.on('click', function(e) {
+  if (currentMode === 'build-track') {
+    if (!tempTrackNodes.length) {
+      tempTrackNodes.push([station.getLatLng().lat, station.getLatLng().lng]);
+    } else {
+      const last = tempTrackNodes[tempTrackNodes.length - 1];
+      const end = [station.getLatLng().lat, station.getLatLng().lng];
+      const seg = L.polyline([last, end], {color: '#aaa', weight: 2, dashArray: '5,5'}).addTo(map);
+      tempTrackSegments.push(seg);
+      tempTrackNodes.push(end);
+    }
+  }
+});
+
 </script>
 
 </body>

@@ -1,214 +1,392 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>鉄道シミュレーション管理システム</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      font-family: "Segoe UI", sans-serif;
-      background-color: #f2f2f2;
-    }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>建設：仮設置→確定 プロトタイプ</title>
 
-    #map {
-      width: 100%;
-      height: 100vh;
-      z-index: 1;
-    }
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 1000;
-      display: flex;
-      gap: 8px;
-    }
+<style>
+  html,body,#map { height:100%; margin:0; padding:0; font-family: "Noto Sans JP", system-ui, Arial; }
+  #map { width:100%; height:100vh; }
 
-    .tab {
-      background-color: white;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-weight: bold;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      transition: background-color 0.2s;
-    }
+  /* 左パネル */
+  .panel {
+    position:absolute; left:12px; top:12px; z-index:1400;
+    width:260px; background:rgba(255,255,255,0.97); border-radius:10px;
+    padding:12px; box-shadow:0 8px 22px rgba(0,0,0,0.12);
+  }
+  .panel h3{ margin:0 0 8px 0; font-size:16px; }
+  .btn { display:block; width:100%; padding:8px; margin:6px 0; border-radius:8px; border:none; cursor:pointer;
+        background:#2c7dce; color:white; font-weight:700; }
+  .btn.secondary { background:#6c757d; }
+  .btn.warn { background:#ff6b6b; }
+  .modeActive { box-shadow:0 0 0 4px rgba(44,125,206,0.12); }
 
-    .tab:hover {
-      background-color: #e8f0fe;
-    }
+  /* HUD 右上 */
+  .hud {
+    position:absolute; right:12px; top:12px; z-index:1400;
+    width:220px; background:rgba(255,255,255,0.96); padding:10px; border-radius:10px;
+    box-shadow:0 8px 22px rgba(0,0,0,0.12); font-size:13px;
+  }
+  .hud .row { display:flex; justify-content:space-between; margin:6px 0; }
 
-    .tab.active {
-      background-color: #d2e3fc;
-    }
+  /* 確定・取消バー（仮設置用） */
+  .confirmBar {
+    position:absolute; left:12px; bottom:12px; z-index:1400; width:260px;
+    display:flex; gap:8px;
+  }
+  .miniBtn { flex:1; padding:8px; border-radius:8px; border:none; cursor:pointer; font-weight:700; }
+  .miniBtn.ok { background:#27ae60; color:white; }
+  .miniBtn.cancel { background:#c0c0c0; color:#222; }
 
-    .panel {
-      position: absolute;
-      top: 50px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 8px;
-      padding: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      width: 240px;
-      display: none;
-      z-index: 1001;
-    }
+  /* 仮設置マーカー用スタイルはJS側でdivIcon指定 */
+  .tempSmall { opacity:0.85; }
+  .tempSquare { width:10px; height:10px; border-radius:2px; border:1px solid #444; }
 
-    .panel.active {
-      display: block;
-    }
+  .routePreview { pointer-events:none; opacity:0.9; }
 
-    button {
-      margin-top: 4px;
-      width: 100%;
-      padding: 6px;
-      border: none;
-      border-radius: 4px;
-      background-color: #4285f4;
-      color: white;
-      font-size: 14px;
-      cursor: pointer;
-    }
+  .small { font-size:12px; color:#444; margin-top:6px; }
 
-    button:hover {
-      background-color: #3367d6;
-    }
-
-    h3 {
-      margin-top: 0;
-      font-size: 16px;
-      text-align: center;
-      color: #333;
-    }
-
-  </style>
+</style>
 </head>
 <body>
 
-  <div id="ui">
-    <div class="tab active" data-target="buildPanel">🏗️ 建設</div>
-    <div class="tab" data-target="routePanel">🚉 路線</div>
-    <div class="tab" data-target="vehiclePanel">🚄 車両</div>
-    <div class="tab" data-target="statsPanel">📊 統計</div>
-  </div>
+<div id="map"></div>
 
-  <!-- 建設メニュー -->
-  <div class="panel active" id="buildPanel">
-    <h3>建設メニュー</h3>
-    <button id="stationMode">駅設置（予算必要）</button>
-    <button id="trackMode">線路敷設（予算必要）</button>
-    <button id="cancelBuild">キャンセル</button>
-  </div>
+<div class="panel" id="panel-left">
+  <h3>建設メニュー</h3>
+  <button id="btnPlaceStation" class="btn">駅を仮設置</button>
+  <button id="btnLayTrack" class="btn secondary">線路を仮設置</button>
+  <div class="small">・仮設置後に「確定」で建設（費用差引）。仮設状態でドラッグ可能。</div>
+  <div style="height:8px"></div>
+  <div class="small">・既存の駅/線路をクリックで取り壊し（取り壊し費用で資金から減る）。</div>
+</div>
 
-  <!-- 路線メニュー -->
-  <div class="panel" id="routePanel">
-    <h3>路線メニュー</h3>
-    <button id="createRoute">新しい路線を作成</button>
-    <button id="editRoute">既存路線を編集</button>
-    <button id="deleteRoute">路線削除</button>
-  </div>
+<div class="hud" id="hud">
+  <div class="row"><div>会社名</div><div><strong>YMS Transit</strong></div></div>
+  <div class="row"><div>資金</div><div id="funds">¥0</div></div>
+  <div class="row"><div>駅数</div><div id="stationCount">0</div></div>
+  <div class="row"><div>線路数</div><div id="trackCount">0</div></div>
+</div>
 
-  <!-- 車両メニュー -->
-  <div class="panel" id="vehiclePanel">
-    <h3>車両メニュー</h3>
-    <button id="buyTrain">車両購入</button>
-    <button id="assignTrain">路線に割り当て</button>
-    <button id="manageTrain">車両管理</button>
-  </div>
+<!-- 仮設置用の確定バー（非表示がデフォ） -->
+<div class="confirmBar" id="confirmBar" style="display:none;">
+  <button class="miniBtn ok" id="btnConfirm">確定</button>
+  <button class="miniBtn cancel" id="btnCancelTemp">取消</button>
+</div>
 
-  <!-- 統計メニュー -->
-  <div class="panel" id="statsPanel">
-    <h3>統計メニュー</h3>
-    <button id="viewUsage">利用データ</button>
-    <button id="viewFinance">資金グラフ</button>
-    <button id="viewNetwork">路線ネットワーク</button>
-  </div>
+<script>
+/* -------------------------
+   定数・初期資金
+   ------------------------- */
+const COST = {
+  station: 200000,
+  trackPerKm: 150000,
+  demolitionFactor: 0.5 // 取り壊し費用 = 建設費 * demolitionFactor
+};
 
-  <div id="map"></div>
+let SIM = { funds: 10000000 };
 
-  <script>
-    // === Leaflet地図初期化 ===
-    const map = L.map('map').setView([35.681236, 139.767125], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19
-    }).addTo(map);
+/* -------------------------
+   マップ初期化
+   ------------------------- */
+const map = L.map('map').setView([35.681236,139.767125], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
-    // === タブ切り替え ===
-    const tabs = document.querySelectorAll('.tab');
-    const panels = document.querySelectorAll('.panel');
+/* レイヤ */
+const stationLayer = L.layerGroup().addTo(map);
+const tempStationLayer = L.layerGroup().addTo(map);
+const trackLayer = L.layerGroup().addTo(map);
+const tempTrackLayer = L.layerGroup().addTo(map);
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        panels.forEach(p => p.classList.remove('active'));
-        document.getElementById(tab.dataset.target).classList.add('active');
-      });
+/* -------------------------
+   データ
+   ------------------------- */
+const DB = {
+  stations: {}, // id -> {id, latlng, marker, builtCost}
+  tracks: {},   // id -> {id, latlngs, polyline, builtCost}
+};
+let nextIds = { station:1, track:1 };
+
+/* -------------------------
+   HUD更新
+   ------------------------- */
+function formatYen(n){ return '¥' + Math.round(n).toLocaleString(); }
+function updateHUD(){
+  document.getElementById('funds').textContent = formatYen(SIM.funds);
+  document.getElementById('stationCount').textContent = Object.keys(DB.stations).length;
+  document.getElementById('trackCount').textContent = Object.keys(DB.tracks).length;
+}
+updateHUD();
+
+/* -------------------------
+   モード管理
+   ------------------------- */
+let mode = null; // 'tempStation','tempTrack',null
+let currentTemp = { stations: [], trackNodes: [], previewLine: null };
+
+/* UI ボタン */
+const btnPlaceStation = document.getElementById('btnPlaceStation');
+const btnLayTrack = document.getElementById('btnLayTrack');
+const confirmBar = document.getElementById('confirmBar');
+const btnConfirm = document.getElementById('btnConfirm');
+const btnCancelTemp = document.getElementById('btnCancelTemp');
+
+btnPlaceStation.addEventListener('click', ()=> enterTempStationMode());
+btnLayTrack.addEventListener('click', ()=> enterTempTrackMode());
+btnCancelTemp.addEventListener('click', ()=> cancelTemp());
+btnConfirm.addEventListener('click', ()=> confirmTemp());
+
+function clearTempVisuals(){
+  // remove all temp markers/lines
+  currentTemp.stations.forEach(o=> { if(o.marker) tempStationLayer.removeLayer(o.marker); });
+  currentTemp.stations = [];
+  currentTemp.trackNodes.forEach(n=> { if(n.marker) tempTrackLayer.removeLayer(n.marker); });
+  currentTemp.trackNodes = [];
+  if(currentTemp.previewLine){ tempTrackLayer.removeLayer(currentTemp.previewLine); currentTemp.previewLine = null; }
+}
+
+/* -------------------------
+   仮設置：駅モード
+   - クリックで小さな仮マーカーを置く（複数作れる）
+   - 近くに仮マーカーがあるとその近辺で確定ボタン表示（簡易：常時表示）
+   ------------------------- */
+function enterTempStationMode(){
+  if(mode) { alert('他の仮設置モードがアクティブです。取消するか確定してください'); return; }
+  mode = 'tempStation';
+  btnPlaceStation.classList.add('modeActive');
+  confirmBar.style.display = 'flex';
+  // hint
+  map.once('click', onMapClickTempStation); // first click binds listener; allow multiple via re-binding in handler
+  // also allow multiple stations: we'll attach full click handler
+  map.on('click', onMapClickTempStation);
+}
+
+function onMapClickTempStation(e){
+  if(mode !== 'tempStation') return;
+  // create small translucent circle (仮設置)
+  const smallIcon = L.divIcon({
+    className: '',
+    html: `<div style="width:12px;height:12px;border-radius:50%;background:rgba(44,125,206,0.6);border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`,
+    iconSize: [16,16], iconAnchor:[8,8]
+  });
+  const marker = L.marker(e.latlng, { icon: smallIcon, draggable:true }).addTo(tempStationLayer);
+  // drag updates stored latlng
+  const tempObj = { latlng: e.latlng, marker };
+  marker.on('drag', (ev)=> { tempObj.latlng = ev.target.getLatLng(); });
+  marker.on('click', ()=> {
+    // single-click on temp station can select it, but for now we keep confirm bar global
+  });
+  currentTemp.stations.push(tempObj);
+}
+
+/* -------------------------
+   仮設置：線路モード
+   - クリックで小四角のノードを追加（ドラッグ可能）
+   - 仮設置中は仮プレビュー線が表示される
+   ------------------------- */
+function enterTempTrackMode(){
+  if(mode) { alert('他の仮設置モードがアクティブです。取消するか確定してください'); return; }
+  mode = 'tempTrack';
+  btnLayTrack.classList.add('modeActive');
+  confirmBar.style.display = 'flex';
+  // when in tempTrack mode, listen for clicks to add nodes
+  map.on('click', onMapClickTempTrack);
+}
+
+function onMapClickTempTrack(e){
+  if(mode !== 'tempTrack') return;
+  addTempTrackNode(e.latlng);
+}
+
+function addTempTrackNode(latlng){
+  // create small square divIcon marker
+  const div = L.divIcon({
+    className: '',
+    html: `<div class="tempSquare" style="background:rgba(120,120,120,0.9);"></div>`,
+    iconSize: [12,12], iconAnchor:[6,6]
+  });
+  const marker = L.marker(latlng, { icon: div, draggable:true }).addTo(tempTrackLayer);
+  const node = { latlng, marker };
+  // drag handler updates stored latlng and preview
+  marker.on('drag', (ev)=> {
+    node.latlng = ev.target.getLatLng();
+    updateTempPreviewLine();
+  });
+  marker.on('click', ()=> {
+    // optional: select node for deletion later
+  });
+  currentTemp.trackNodes.push(node);
+  updateTempPreviewLine();
+}
+
+function updateTempPreviewLine(){
+  if(currentTemp.previewLine){ tempTrackLayer.removeLayer(currentTemp.previewLine); currentTemp.previewLine = null; }
+  const pts = currentTemp.trackNodes.map(n=> n.latlng);
+  if(pts.length >= 2){
+    currentTemp.previewLine = L.polyline(pts, { color:'#999', dashArray:'6,4', weight:4, className:'routePreview' }).addTo(tempTrackLayer);
+  }
+}
+
+/* -------------------------
+   キャンセル・確定
+   ------------------------- */
+function cancelTemp(){
+  if(!mode) return;
+  if(!confirm('仮設置をキャンセルしてよいですか？ 作業中の仮設置はすべて消えます。')) return;
+  // cleanup
+  if(mode === 'tempTrack'){
+    map.off('click', onMapClickTempTrack);
+  } else if(mode === 'tempStation'){
+    map.off('click', onMapClickTempStation);
+  }
+  clearTempVisuals();
+  mode = null;
+  btnPlaceStation.classList.remove('modeActive');
+  btnLayTrack.classList.remove('modeActive');
+  confirmBar.style.display = 'none';
+}
+
+function confirmTemp(){
+  if(!mode) return;
+  if(mode === 'tempStation'){
+    // build all temp stations (each costs COST.station)
+    if(currentTemp.stations.length === 0){ alert('仮設置された駅がありません'); return; }
+    const totalCost = COST.station * currentTemp.stations.length;
+    if(SIM.funds < totalCost){ alert('資金不足です'); return; }
+    if(!confirm(`仮設置されている駅 ${currentTemp.stations.length}ヶ所 を建設しますか？ 合計 ${formatYen(totalCost)}`)) return;
+    // commit each: create final marker (bigger), remove temp
+    currentTemp.stations.forEach(obj=>{
+      SIM.funds -= COST.station;
+      const id = nextIds.station++;
+      const icon = L.divIcon({ html: `<div style="width:18px;height:18px;border-radius:50%;background:#2c7dce;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.25)"></div>`, iconSize:[24,24], iconAnchor:[12,12] });
+      const marker = L.marker(obj.latlng, { icon, draggable:true }).addTo(stationLayer);
+      marker.on('click', ()=> onBuiltStationClick(id));
+      marker.on('dragend', (ev)=> { DB.stations[id].latlng = ev.target.getLatLng(); });
+      DB.stations[id] = { id, latlng: obj.latlng, marker, builtCost: COST.station };
+      tempStationLayer.removeLayer(obj.marker);
     });
+    currentTemp.stations = [];
+    // cleanup and UI reset
+    map.off('click', onMapClickTempStation);
+    mode = null;
+    btnPlaceStation.classList.remove('modeActive');
+    confirmBar.style.display = 'none';
+    updateHUD();
+    alert('駅を建設しました');
+  } else if(mode === 'tempTrack'){
+    // confirm track: cost = sum(segment distances) * perKm
+    if(currentTemp.trackNodes.length < 2){ alert('ノードが2点以上必要です'); return; }
+    // calculate full path latlngs
+    const latlngs = currentTemp.trackNodes.map(n=> n.latlng);
+    // compute length
+    let totalKm = 0;
+    for(let i=0;i<latlngs.length-1;i++){
+      totalKm += map.distance(latlngs[i], latlngs[i+1]) / 1000;
+    }
+    const cost = Math.round(totalKm * COST.trackPerKm);
+    if(SIM.funds < cost){ alert('資金不足です'); return; }
+    if(!confirm(`仮設置された線路を確定しますか？\n長さ: ${totalKm.toFixed(2)} km\n費用: ${formatYen(cost)}`)) return;
+    // deduct and create permanent polyline
+    SIM.funds -= cost;
+    const id = nextIds.track++;
+    const poly = L.polyline(latlngs, { color:'#7f8c8d', weight:6, opacity:0.92 }).addTo(trackLayer);
+    poly.on('click', ()=> onBuiltTrackClick(id));
+    DB.tracks[id] = { id, latlngs: latlngs.slice(), polyline: poly, builtCost: cost };
+    // clear temp visuals
+    currentTemp.trackNodes.forEach(n=> tempTrackLayer.removeLayer(n.marker));
+    if(currentTemp.previewLine){ tempTrackLayer.removeLayer(currentTemp.previewLine); currentTemp.previewLine = null; }
+    currentTemp.trackNodes = [];
+    map.off('click', onMapClickTempTrack);
+    mode = null;
+    btnLayTrack.classList.remove('modeActive');
+    confirmBar.style.display = 'none';
+    updateHUD();
+    alert('線路を建設しました');
+  }
+}
 
-    // === モード変数 ===
-    let mode = null;
-    const stations = [];
-    const tracks = [];
-    const routes = [];
+/* -------------------------
+   Built element click handlers (取り壊し用)
+   ------------------------- */
+function onBuiltStationClick(id){
+  const st = DB.stations[id];
+  if(!st) return;
+  const popupHtml = `
+    <div><strong>駅 #${id}</strong></div>
+    <div class="small">建設費: ${formatYen(st.builtCost)}</div>
+    <div style="margin-top:6px">
+      <button id="btnDemolStation" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:#fff;cursor:pointer">取り壊す</button>
+    </div>
+  `;
+  st.marker.bindPopup(popupHtml).openPopup();
+  // attach handler via one-time listener on popupopen
+  st.marker.on('popupopen', ()=>{
+    const btn = document.getElementById('btnDemolStation');
+    if(btn) btn.onclick = ()=> {
+      if(!confirm('この駅を取り壊しますか？ 取り壊し費用が資金から差し引かれます。')) return;
+      const demolitionCost = Math.round(st.builtCost * COST.demolitionFactor);
+      if(SIM.funds < demolitionCost){ alert('資金不足で取り壊せません'); return; }
+      SIM.funds -= demolitionCost;
+      stationLayer.removeLayer(st.marker);
+      delete DB.stations[id];
+      updateHUD();
+      alert(`駅を取り壊しました（費用 ${formatYen(demolitionCost)}）`);
+    };
+  });
+}
 
-    // === 駅設置 ===
-    document.getElementById('stationMode').addEventListener('click', () => {
-      mode = 'station';
-      alert('駅設置モードです。地図上をクリックして駅を追加してください。');
-    });
+function onBuiltTrackClick(id){
+  const tr = DB.tracks[id];
+  if(!tr) return;
+  // show popup at clicked position with demolish button (we'll create a temporary marker at midpoint for popup)
+  const midIdx = Math.floor((tr.latlngs.length - 1)/2);
+  const pos = tr.latlngs[midIdx];
+  const popup = L.popup({ maxWidth:220 })
+    .setLatLng(pos)
+    .setContent(`<div><strong>線路 #${id}</strong><div class="small">長さ: ${(tr.builtCost / COST.trackPerKm).toFixed(2)} km (概算)</div><div style="margin-top:6px"><button id="btnDemolTrack" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:#fff;cursor:pointer">取り壊す</button></div></div>`)
+    .openOn(map);
+  // attach handler after popup pane exists
+  map.once('popupopen', ()=>{
+    const btn = document.getElementById('btnDemolTrack');
+    if(!btn) return;
+    btn.onclick = ()=> {
+      if(!confirm('この線路を取り壊しますか？ 取り壊し費用が資金から差し引かれます。')) return;
+      const demolitionCost = Math.round(tr.builtCost * COST.demolitionFactor);
+      if(SIM.funds < demolitionCost){ alert('資金不足で取り壊せません'); return; }
+      SIM.funds -= demolitionCost;
+      trackLayer.removeLayer(tr.polyline);
+      delete DB.tracks[id];
+      map.closePopup();
+      updateHUD();
+      alert(`線路を取り壊しました（費用 ${formatYen(demolitionCost)}）`);
+    };
+  });
+}
 
-    // === 線路敷設 ===
-    document.getElementById('trackMode').addEventListener('click', () => {
-      mode = 'track';
-      alert('線路敷設モードです。駅同士を結んでください。');
-    });
+/* -------------------------
+   Utility: small helpers
+   ------------------------- */
+function formatYen(n){ return '¥' + Math.round(n).toLocaleString(); }
 
-    // === キャンセル ===
-    document.getElementById('cancelBuild').addEventListener('click', () => {
-      mode = null;
-      alert('建設モードを解除しました。');
-    });
+/* -------------------------
+   Periodic HUD sync (just in case)
+   ------------------------- */
+setInterval(updateHUD, 500);
 
-    // === 路線作成 ===
-    document.getElementById('createRoute').addEventListener('click', () => {
-      mode = 'route';
-      alert('路線作成モードです。駅を選択して環状路線を作成します。');
-    });
+/* -------------------------
+   Quick demo: place 2 sample stations & a track (optional)
+   ------------------------- */
+/*
+setTimeout(()=> {
+  // sample stations to test demolition
+  map.fire('click', { latlng: L.latLng(35.69,139.70) });
+}, 1000);
+*/
 
-    // === 地図クリック動作 ===
-    let tempTrack = [];
-    map.on('click', function(e) {
-      if (mode === 'station') {
-        const marker = L.marker(e.latlng).addTo(map);
-        stations.push(e.latlng);
-        marker.bindTooltip(`駅${stations.length}`, {permanent: true, direction: 'right'});
-      } else if (mode === 'track') {
-        tempTrack.push(e.latlng);
-        if (tempTrack.length === 2) {
-          const line = L.polyline(tempTrack, {color: '#555', weight: 4}).addTo(map);
-          tracks.push(line);
-          tempTrack = [];
-        }
-      } else if (mode === 'route') {
-        tempTrack.push(e.latlng);
-        if (tempTrack.length >= 3) {
-          const line = L.polyline([...tempTrack, tempTrack[0]], {color: '#1a73e8', weight: 3, dashArray: '5,5'}).addTo(map);
-          routes.push(line);
-          alert('環状路線を作成しました。');
-          tempTrack = [];
-        }
-      }
-    });
-  </script>
-
+</script>
 </body>
 </html>

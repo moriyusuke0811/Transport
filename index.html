@@ -3,32 +3,33 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>建設UI改善プロトタイプ</title>
+<title>建設UI改善プロトタイプ（駅スナップ対応）</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-  html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",system-ui,Arial;}
-  #map{width:100%;height:100vh;}
+html,body,#map{height:100%;margin:0;padding:0;font-family:"Noto Sans JP",system-ui,Arial;}
+#map{width:100%;height:100vh;}
 
-  .panel { position:absolute; left:12px; top:12px; z-index:1400; width:300px;
-    background:rgba(255,255,255,0.96); padding:12px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12);}
-  .panel h3{margin:0 0 8px 0;font-size:16px}
-  .btn{display:block;width:100%;padding:8px;margin:6px 0;border-radius:8px;border:none;background:#2c7dce;color:#fff;font-weight:700;cursor:pointer}
-  .btn.modeActive{background:#27ae60 !important}
-  .mini{font-size:12px;color:#444;margin-top:6px}
-  .confirmBar{position:absolute;left:12px;bottom:12px;z-index:1400;display:none;gap:8px;width:300px}
-  .miniBtn{flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
-  .miniBtn.ok{background:#27ae60;color:#fff}
-  .miniBtn.cancel{background:#c0c0c0;color:#222}
+.panel { position:absolute; left:12px; top:12px; z-index:1400; width:300px;
+  background:rgba(255,255,255,0.96); padding:12px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12);}
+.panel h3{margin:0 0 8px 0;font-size:16px}
+.btn{display:block;width:100%;padding:8px;margin:6px 0;border-radius:8px;border:none;background:#2c7dce;color:#fff;font-weight:700;cursor:pointer}
+.btn.secondary{background:#6c757d}
+.btn.modeActive{background:#27ae60 !important}
+.mini{font-size:12px;color:#444;margin-top:6px}
+.confirmBar{position:absolute;left:12px;bottom:12px;z-index:1400;display:none;gap:8px;width:300px}
+.miniBtn{flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+.miniBtn.ok{background:#27ae60;color:#fff}
+.miniBtn.cancel{background:#c0c0c0;color:#222}
 
-  .hud{position:absolute;right:12px;top:12px;z-index:1400;width:250px;background:rgba(255,255,255,0.96);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(0,0,0,0.12);font-size:13px}
-  .hud .row{display:flex;justify-content:space-between;margin:6px 0}
+.hud{position:absolute;right:12px;top:12px;z-index:1400;width:250px;background:rgba(255,255,255,0.96);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(0,0,0,0.12);font-size:13px}
+.hud .row{display:flex;justify-content:space-between;margin:6px 0}
 
-  .tempCircle{width:12px;height:12px;border-radius:50%;background:rgba(44,125,206,0.6);border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
-  .builtCircle{width:18px;height:18px;border-radius:50%;background:#2c7dce;border:3px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)}
-  .tempSquare{width:12px;height:12px;background:rgba(120,120,120,0.95);border:1px solid #444;border-radius:2px}
+.tempCircle{width:12px;height:12px;border-radius:50%;background:rgba(44,125,206,0.6);border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
+.builtCircle{width:18px;height:18px;border-radius:50%;background:#2c7dce;border:3px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)}
+.tempSquare{width:12px;height:12px;background:rgba(120,120,120,0.95);border:1px solid #444;border-radius:2px}
 </style>
 </head>
 <body>
@@ -38,7 +39,7 @@
 <div class="panel" id="panel">
   <h3>建設メニュー</h3>
   <button id="btnTempStation" class="btn">駅 仮設置モード</button>
-  <button id="btnTempTrack" class="btn">線路 仮設置モード</button>
+  <button id="btnTempTrack" class="btn secondary">線路 仮設置モード</button>
 
   <div style="height:8px"></div>
   <div class="mini">仮設置後に下のバーで「確定」または「取消」。確定後は固定され移動できません。</div>
@@ -61,15 +62,8 @@
 </div>
 
 <script>
-/* -------------------------
-   定数・経済
-------------------------- */
 const COST = { station:200000, trackPerKm:150000, demolitionFactor:0.5 };
 let SIM = { funds:10000000 };
-
-/* -------------------------
-   マップ & レイヤ
-------------------------- */
 const map = L.map('map').setView([35.681236,139.767125], 11);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
@@ -78,21 +72,15 @@ const tempStationLayer = L.layerGroup().addTo(map);
 const trackLayer = L.layerGroup().addTo(map);
 const tempTrackLayer = L.layerGroup().addTo(map);
 
-/* -------------------------
-   DB
-------------------------- */
 const DB = { stations:{}, tracks:{} };
 let nextIds = { station:1, track:1, segment:1 };
 
-/* -------------------------
-   HUD
-------------------------- */
 function formatYen(n){ return '¥'+Math.round(n).toLocaleString(); }
 function updateHUD(){
   document.getElementById('funds').textContent = formatYen(SIM.funds);
   document.getElementById('stationCount').textContent = Object.keys(DB.stations).length;
-  let segCount = 0; Object.values(DB.tracks).forEach(t=> segCount+=t.segments.length);
-  document.getElementById('segmentCount').textContent = segCount;
+  let segCount=0; Object.values(DB.tracks).forEach(t=> segCount+=t.segments.length);
+  document.getElementById('segmentCount').textContent=segCount;
   document.getElementById('currentMode').textContent = mode==='tempStation'?'駅 仮設置':mode==='tempTrack'?'線路 仮設置':'なし';
 }
 
@@ -110,20 +98,15 @@ const btnCancel = document.getElementById('btnCancel');
 
 btnTempStation.addEventListener('click', ()=> { if(mode){alert('他モードを終了');return;} enterTempStationMode(); });
 btnTempTrack.addEventListener('click', ()=> { if(mode){alert('他モードを終了');return;} enterTempTrackMode(); });
-
 btnCancel.addEventListener('click', cancelTemp);
 btnConfirm.addEventListener('click', confirmTemp);
 
 function enterTempStationMode(){
-  mode='tempStation';
-  btnTempStation.classList.add('modeActive');
-  confirmBar.style.display='flex';
+  mode='tempStation'; btnTempStation.classList.add('modeActive'); confirmBar.style.display='flex';
   map.on('click', onMapClickTempStation);
 }
 function enterTempTrackMode(){
-  mode='tempTrack';
-  btnTempTrack.classList.add('modeActive');
-  confirmBar.style.display='flex';
+  mode='tempTrack'; btnTempTrack.classList.add('modeActive'); confirmBar.style.display='flex';
   map.on('click', onMapClickTempTrack);
 }
 
@@ -132,21 +115,21 @@ function enterTempTrackMode(){
 ------------------------- */
 function onMapClickTempStation(e){
   if(mode!=='tempStation') return;
-  const pin = createTempStationMarker(e.latlng);
+  const pin=createTempStationMarker(e.latlng);
   tempStationLayer.addLayer(pin.marker);
   temp.stations.push(pin);
   updateTempStationCost();
 }
 function createTempStationMarker(latlng){
-  const icon = L.divIcon({ html:`<div class="tempCircle"></div>`, iconSize:[16,16], iconAnchor:[8,8] });
-  const marker = L.marker(latlng,{icon,draggable:true}).addTo(tempStationLayer);
-  const obj = {latlng, marker};
-  marker.on('drag', ev=>{obj.latlng = ev.target.getLatLng(); updateTempStationCost();});
+  const icon=L.divIcon({ html:`<div class="tempCircle"></div>`, iconSize:[16,16], iconAnchor:[8,8] });
+  const marker=L.marker(latlng,{icon,draggable:true}).addTo(tempStationLayer);
+  const obj={latlng,marker};
+  marker.on('drag', ev=>{ obj.latlng=ev.target.getLatLng(); updateTempStationCost(); });
   return obj;
 }
 function updateTempStationCost(){
-  const cost = temp.stations.length*COST.station;
-  document.getElementById('tempCost').textContent = formatYen(cost);
+  const cost=temp.stations.length*COST.station;
+  document.getElementById('tempCost').textContent=formatYen(cost);
 }
 
 /* -------------------------
@@ -154,27 +137,27 @@ function updateTempStationCost(){
 ------------------------- */
 function onMapClickTempTrack(e){
   if(mode!=='tempTrack') return;
+  // 既存駅にスナップ
   const sid = findNearestBuiltStationId(e.latlng,20);
   if(sid){ addTempTrackNode(DB.stations[sid].latlng,{snapStationId:sid}); }
   else { addTempTrackNode(e.latlng); }
 }
 function addTempTrackNode(latlng, opts={}){
-  const icon = L.divIcon({ html:`<div class="tempSquare"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
-  const marker = L.marker(latlng,{icon,draggable:true}).addTo(tempTrackLayer);
-  const node = { latlng, marker, snapStationId:opts.snapStationId||null };
+  const icon=L.divIcon({ html:`<div class="tempSquare"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
+  const marker=L.marker(latlng,{icon,draggable:true}).addTo(tempTrackLayer);
+  const node={latlng,marker,snapStationId:opts.snapStationId||null};
   marker.on('drag', ev=>{ node.latlng=ev.target.getLatLng(); updateTempPreview(); updateTempTrackCost(); });
-  temp.trackNodes.push(node);
-  updateTempPreview(); updateTempTrackCost();
+  temp.trackNodes.push(node); updateTempPreview(); updateTempTrackCost();
 }
 function updateTempPreview(){
   if(temp.previewLine){ tempTrackLayer.removeLayer(temp.previewLine); temp.previewLine=null; }
-  const pts = temp.trackNodes.map(n=>n.latlng);
+  const pts=temp.trackNodes.map(n=>n.latlng);
   if(pts.length>=2){ temp.previewLine=L.polyline(pts,{color:'#999',dashArray:'6,4',weight:4}).addTo(tempTrackLayer); }
 }
 function updateTempTrackCost(){
   if(temp.trackNodes.length<2){ document.getElementById('tempCost').textContent='-'; return; }
   let totalKm=0;
-  for(let i=0;i<temp.trackNodes.length-1;i++) totalKm += map.distance(temp.trackNodes[i].latlng,temp.trackNodes[i+1].latlng)/1000;
+  for(let i=0;i<temp.trackNodes.length-1;i++) totalKm+=map.distance(temp.trackNodes[i].latlng,temp.trackNodes[i+1].latlng)/1000;
   document.getElementById('tempCost').textContent=formatYen(Math.round(totalKm*COST.trackPerKm));
 }
 
@@ -184,7 +167,7 @@ function updateTempTrackCost(){
 function findNearestBuiltStationId(latlng,maxMeters){
   let best=null,bestD=Infinity;
   Object.values(DB.stations).forEach(s=>{
-    const d = map.distance(latlng,s.latlng);
+    const d=map.distance(latlng,s.latlng);
     if(d<bestD){ bestD=d; best=s; }
   });
   if(best && bestD<=maxMeters) return best.id;
@@ -221,9 +204,9 @@ function confirmTemp(){
     temp.stations.forEach(o=>{
       SIM.funds -= COST.station;
       const id=nextIds.station++;
-      const icon = L.divIcon({ html:`<div class="builtCircle"></div>`, iconSize:[24,24], iconAnchor:[12,12] });
+      const icon=L.divIcon({ html:`<div class="builtCircle"></div>`, iconSize:[24,24], iconAnchor:[12,12] });
       const marker=L.marker(o.latlng,{icon,draggable:false}).addTo(stationLayer);
-      DB.stations[id]={id,latlng:o.latlng,marker, builtCost:COST.station};
+      DB.stations[id]={id,latlng:o.latlng,marker,builtCost:COST.station};
       tempStationLayer.removeLayer(o.marker);
       marker.on('click', ()=> onBuiltStationClick(id));
     });
@@ -231,7 +214,7 @@ function confirmTemp(){
   } else if(mode==='tempTrack'){
     if(temp.trackNodes.length<2) return alert('線路ノードは2点以上必要です');
     let latlngs=temp.trackNodes.map(n=>n.latlng);
-    let totalKm=0; for(let i=0;i<latlngs.length-1;i++) totalKm += map.distance(latlngs[i],latlngs[i+1])/1000;
+    let totalKm=0; for(let i=0;i<latlngs.length-1;i++) totalKm+=map.distance(latlngs[i],latlngs[i+1])/1000;
     const cost=Math.round(totalKm*COST.trackPerKm);
     if(SIM.funds<cost) return alert('資金不足です');
     if(!confirm(`仮設の線路を確定しますか？ 総長 ${totalKm.toFixed(2)} km / 費用 ${formatYen(cost)}`)) return;
@@ -266,8 +249,7 @@ function confirmTemp(){
    Built element handlers
 ------------------------- */
 function onBuiltStationClick(id){
-  const st=DB.stations[id];
-  if(!st) return;
+  const st=DB.stations[id]; if(!st) return;
   const popupHtml=`<div><strong>駅 #${id}</strong></div><div class="mini">建設費: ${formatYen(st.builtCost)}</div><div style="margin-top:8px"><button id="btnDemolStation" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:white;cursor:pointer">取り壊す</button></div>`;
   st.marker.bindPopup(popupHtml).openPopup();
   st.marker.on('popupopen', ()=>{
@@ -283,10 +265,8 @@ function onBuiltStationClick(id){
 }
 
 function onBuiltSegmentClick(trackId, segId, latlng){
-  const track = DB.tracks[trackId];
-  if(!track) return;
-  const segment = track.segments.find(s=> s.id===segId);
-  if(!segment) return;
+  const track = DB.tracks[trackId]; if(!track) return;
+  const segment = track.segments.find(s=> s.id===segId); if(!segment) return;
   const popup = L.popup({ maxWidth:240 }).setLatLng(latlng)
     .setContent(`<div><strong>線路 区間 #${segId}</strong><div class="mini">建設費: ${formatYen(segment.builtCost)}</div><div style="margin-top:8px"><button id="btnDemolSeg" style="padding:6px;border-radius:6px;border:none;background:#ff6b6b;color:white;cursor:pointer">この区間を取り壊す</button></div></div>`)
     .openOn(map);
@@ -307,18 +287,7 @@ function onBuiltSegmentClick(trackId, segId, latlng){
   });
 }
 
-/* -------------------------
-   Click built station to start snap in tempTrack
-------------------------- */
-map.on('click',(e)=>{
-  if(mode==='tempTrack' && temp.trackNodes.length===0){
-    const sid=findNearestBuiltStationId(e.latlng,20);
-    if(sid) addTempTrackNode(DB.stations[sid].latlng,{snapStationId:sid});
-  }
-});
-
 updateHUD();
 </script>
-
 </body>
 </html>

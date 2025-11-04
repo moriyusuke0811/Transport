@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>鉄道シミュレーター</title>
+  <title>鉄道シミュレーター（淡色版）</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
     body {
@@ -15,6 +15,7 @@
     #map {
       width: 100%;
       height: 90vh;
+      filter: brightness(0.9) contrast(0.9) saturate(0.7);
     }
     .menu-bar {
       display: flex;
@@ -76,10 +77,11 @@
     <button class="menu-btn" onclick="showTab('stats')">統計メニュー</button>
   </div>
 
-  <!-- 各タブパネル -->
   <div id="construction" class="panel active">
     <button class="button" id="stationBtn" onclick="setMode('station')">駅設置</button>
     <button class="button" id="trackBtn" onclick="setMode('track')">線路敷設</button>
+    <button class="button" id="undoBtn" onclick="undoTrack()">一つ戻る</button>
+    <button class="button" id="cancelBtn" onclick="cancelTemp()">キャンセル</button>
     <button class="button" id="confirmBtn" onclick="confirmPlacement()">確定</button>
     <span id="costPreview">必要金額: 0</span>
   </div>
@@ -102,25 +104,16 @@
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([35.6812,139.7671], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      maxZoom:19,
-      attribution:'&copy; OpenStreetMap'
+    const map = L.map('map').setView([35.6812,139.7671], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+      attribution:'&copy; OpenStreetMap & Carto',
+      maxZoom:19
     }).addTo(map);
 
-    const DB = {
-      stations: {},
-      tracks: {},
-      routes: {}
-    };
-    let currentMode = null;
-    let tempStation = null;
-    let tempTrackPoints = [];
-    let budget = 1000000;
-    let nextStationId = 1;
-    let nextTrackId = 1;
-    let nextRouteId = 1;
-    let tempRoute = [];
+    const DB = { stations:{}, tracks:{}, routes:{} };
+    let currentMode=null, tempStation=null, tempTrackPoints=[], budget=1000000;
+    let nextStationId=1, nextTrackId=1, tempRoute=[];
+    const tempLayers=[];
 
     function showTab(id){
       document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -130,7 +123,7 @@
     }
 
     function setMode(mode){
-      currentMode = mode;
+      currentMode=mode;
       document.querySelectorAll('.button').forEach(b=>b.classList.remove('active'));
       if(mode==='station') document.getElementById('stationBtn').classList.add('active');
       if(mode==='track') document.getElementById('trackBtn').classList.add('active');
@@ -143,100 +136,68 @@
       if(currentMode==='route') selectStationForRoute(e.latlng);
     });
 
-    // 仮駅設置
     function createTempStation(latlng){
       if(tempStation) map.removeLayer(tempStation.marker);
       tempStation = {
         latlng,
-        marker: L.circleMarker(latlng,{
-          radius:5,
-          color:'#facc15'
-        }).addTo(map)
+        marker:L.circleMarker(latlng,{radius:5,color:'#facc15'}).addTo(map)
       };
-      document.getElementById('costPreview').textContent = '必要金額: ¥50000';
+      document.getElementById('costPreview').textContent='必要金額: ¥50000';
     }
 
-    // 線路仮設置
     function addTrackPoint(latlng){
       tempTrackPoints.push(latlng);
-      L.circleMarker(latlng,{radius:4,color:'#5aa0f0'}).addTo(map);
+      const pt=L.circleMarker(latlng,{radius:4,color:'#5aa0f0'}).addTo(map);
+      tempLayers.push(pt);
       if(tempTrackPoints.length>1){
-        L.polyline([tempTrackPoints[tempTrackPoints.length-2], latlng],
-          {color:'#2c7dce',weight:2,dashArray:'4,4'}).addTo(map);
+        const ln=L.polyline([tempTrackPoints[tempTrackPoints.length-2],latlng],
+          {color:'#2c7dce',weight:2,opacity:0.6,dashArray:'6,6'}).addTo(map);
+        tempLayers.push(ln);
       }
-      document.getElementById('costPreview').textContent = `必要金額: ¥${tempTrackPoints.length*10000}`;
+      document.getElementById('costPreview').textContent=`必要金額: ¥${tempTrackPoints.length*10000}`;
+    }
+
+    function undoTrack(){
+      if(tempTrackPoints.length>0){
+        tempTrackPoints.pop();
+        const layer=tempLayers.pop();
+        if(layer) map.removeLayer(layer);
+        document.getElementById('costPreview').textContent=`必要金額: ¥${tempTrackPoints.length*10000}`;
+      }
+    }
+
+    function cancelTemp(){
+      tempTrackPoints=[];
+      if(tempStation){map.removeLayer(tempStation.marker);tempStation=null;}
+      tempLayers.forEach(l=>map.removeLayer(l));
+      tempLayers.length=0;
+      document.getElementById('costPreview').textContent='必要金額: 0';
     }
 
     function confirmPlacement(){
       if(currentMode==='station' && tempStation){
-        const id = 'S'+nextStationId++;
-        const marker = L.circleMarker(tempStation.latlng,{
-          radius:8,
-          color:'#2c7dce',
-          fillColor:'#2c7dce',
-          fillOpacity:1
-        }).addTo(map).on('click',()=>onBuiltStationClick(id));
+        const id='S'+nextStationId++;
+        const marker=L.circleMarker(tempStation.latlng,{
+          radius:8,color:'#2c7dce',fillColor:'#2c7dce',fillOpacity:1
+        }).addTo(map);
         DB.stations[id]={id,marker,latlng:tempStation.latlng};
-        budget -= 50000;
+        budget-=50000;
         updateBudget();
+        map.removeLayer(tempStation.marker);
         tempStation=null;
         document.getElementById('costPreview').textContent='必要金額: 0';
       }
       if(currentMode==='track' && tempTrackPoints.length>1){
         for(let i=0;i<tempTrackPoints.length-1;i++){
           const id='T'+nextTrackId++;
-          const line=L.polyline([tempTrackPoints[i],tempTrackPoints[i+1]],{
-            color:'#2c7dce',weight:3
-          }).addTo(map);
-          DB.tracks[id]={id,line,start:tempTrackPoints[i],end:tempTrackPoints[i+1]};
+          const line=L.polyline([tempTrackPoints[i],tempTrackPoints[i+1]],
+            {color:'#2c7dce',weight:3}).addTo(map);
+          DB.tracks[id]={id,line};
         }
-        budget -= tempTrackPoints.length*10000;
+        budget-=tempTrackPoints.length*10000;
         updateBudget();
-        tempTrackPoints=[];
-        document.getElementById('costPreview').textContent='必要金額: 0';
+        cancelTemp();
       }
-    }
-
-    function onBuiltStationClick(id){
-      const s=DB.stations[id];
-      if(currentMode==='route'){
-        tempRoute.push(id);
-        s.marker.setStyle({color:'#facc15'});
-      }
-      highlightConnectedTracks(id); // 接続線ハイライト追加！
-    }
-
-    function finalizeRoute(){
-      if(tempRoute.length<2){alert('2駅以上選択してください');return;}
-      const id='R'+nextRouteId++;
-      DB.routes[id]={id,stations:[...tempRoute]};
-      tempRoute.forEach(sid=>{
-        DB.stations[sid].marker.setStyle({color:'#2c7dce'});
-      });
-      alert(`路線 ${id} を登録しました`);
-      tempRoute=[];
-    }
-
-    function highlightConnectedTracks(stationId){
-      Object.values(DB.tracks).forEach(t=>{
-        if(t.line) t.line.setStyle({color:'#2c7dce',weight:3,opacity:0.8});
-      });
-      const connected=Object.values(DB.tracks).filter(t=>{
-        return isNear(t.start,DB.stations[stationId].latlng)||isNear(t.end,DB.stations[stationId].latlng);
-      });
-      connected.forEach(t=>{
-        if(t.line)t.line.setStyle({color:'#facc15',weight:6,opacity:1});
-      });
-      setTimeout(()=>{
-        connected.forEach(t=>{
-          if(t.line)t.line.setStyle({color:'#2c7dce',weight:3,opacity:0.8});
-        });
-      },2500);
-    }
-
-    function isNear(a,b){
-      const dx=a.lat-b.lat,dy=a.lng-b.lng;
-      return Math.sqrt(dx*dx+dy*dy)<0.0005;
     }
 
     function selectStationForRoute(latlng){
@@ -246,11 +207,17 @@
         const d=map.distance(latlng,s.latlng);
         if(d<100 && d<min){nearest=id;min=d;}
       }
-      if(nearest) onBuiltStationClick(nearest);
+      if(nearest) tempRoute.push(nearest);
+    }
+
+    function finalizeRoute(){
+      if(tempRoute.length<2){alert('2駅以上選択してください');return;}
+      alert(`路線登録: ${tempRoute.join(' → ')}`);
+      tempRoute=[];
     }
 
     function updateBudget(){
-      document.getElementById('budgetValue').textContent = budget;
+      document.getElementById('budgetValue').textContent=budget;
     }
   </script>
 </body>

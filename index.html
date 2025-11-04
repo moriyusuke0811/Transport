@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>鉄道建設モード改良UI</title>
+<title>鉄道建設システム v3</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
 body{
   margin:0;
-  background:#0f1013;
-  color:#e0e0e0;
   font-family:"Noto Sans JP",sans-serif;
+  background:#0f1113;
+  color:#eaeaea;
 }
-#map{width:100%;height:calc(100vh - 80px);filter:brightness(0.9) contrast(0.9) saturate(0.8);}
+#map{width:100%;height:calc(100vh - 120px);}
 
-/* 上部メニューバー */
+/* ===== 上部メニュー ===== */
 .menu-bar{
   display:flex;
   background:#1b1c20;
@@ -37,54 +37,98 @@ body{
   color:#fff;
 }
 
-/* 建設操作バー（下段） */
-.action-bar{
+/* ===== 建設カテゴリバー ===== */
+.build-bar{
   display:none;
-  align-items:center;
-  justify-content:center;
   background:#22242a;
   height:40px;
+  align-items:center;
+  justify-content:center;
+  border-bottom:1px solid #444;
+}
+.build-bar.show{display:flex;}
+.build-btn{
+  margin:0 10px;
+  padding:6px 12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:700;
+  background:#333;
+  color:#aaa;
+}
+.build-btn.active{
+  background:#2c7dce;
+  color:white;
+}
+
+/* ===== 建設操作バー ===== */
+.action-bar{
+  display:none;
+  background:#25272e;
+  height:40px;
+  align-items:center;
+  justify-content:center;
   gap:10px;
   border-bottom:1px solid #444;
 }
 .action-bar.show{display:flex;}
 .action-btn{
   border:none;
-  background:#2c7dce;
-  color:white;
-  font-weight:700;
   border-radius:6px;
-  cursor:pointer;
+  font-weight:700;
   padding:6px 12px;
+  cursor:pointer;
 }
-.action-btn.cancel{background:#ff6b6b;}
-.action-btn.undo{background:#6c757d;}
-.action-btn.confirm{background:#27ae60;}
+.action-btn.undo{background:#6c757d;color:white;}
+.action-btn.cancel{background:#ff6b6b;color:white;}
+.action-btn.confirm{background:#27ae60;color:white;}
 
-/* 資金表示 */
+/* ===== HUD・UI補助 ===== */
 #hud{
   position:absolute;
-  top:12px;
-  right:12px;
-  background:rgba(255,255,255,0.08);
-  padding:8px 14px;
+  top:10px;
+  right:10px;
+  background:rgba(255,255,255,0.1);
+  padding:6px 10px;
   border-radius:8px;
   font-size:14px;
-  backdrop-filter:blur(8px);
+  backdrop-filter:blur(6px);
+}
+#selectModeBtn{
+  position:absolute;
+  bottom:20px;
+  right:20px;
+  background:#2c7dce;
+  color:white;
+  border:none;
+  border-radius:50%;
+  width:48px;
+  height:48px;
+  font-size:22px;
+  font-weight:bold;
+  cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,0.4);
 }
 </style>
 </head>
 <body>
 
-<!-- メニューバー -->
+<!-- 上部メニューバー -->
 <div class="menu-bar">
-  <button class="menu-btn active" onclick="setMode('select')">選択モード</button>
-  <button class="menu-btn" onclick="setMode('station')">駅建設</button>
-  <button class="menu-btn" onclick="setMode('track')">線路建設</button>
-  <button class="menu-btn" onclick="setMode('route')">路線設定</button>
+  <button class="menu-btn active" onclick="switchMainTab('build')">建設</button>
+  <button class="menu-btn" onclick="switchMainTab('route')">路線設定</button>
 </div>
 
-<!-- 建設時のみ表示される操作バー -->
+<!-- 建設カテゴリバー -->
+<div id="buildBar" class="build-bar">
+  <button class="build-btn" onclick="setBuildType('station')">駅</button>
+  <button class="build-btn" onclick="setBuildType('track')">線路</button>
+  <button class="build-btn" onclick="setBuildType('facility')">施設</button>
+  <button class="build-btn" onclick="setBuildType('shop')">店舗</button>
+</div>
+
+<!-- 操作バー -->
 <div id="actionBar" class="action-bar">
   <button class="action-btn undo" onclick="undoTemp()">↺ 一つ戻る</button>
   <button class="action-btn cancel" onclick="cancelTemp()">✖ キャンセル</button>
@@ -97,130 +141,140 @@ body{
 <!-- HUD -->
 <div id="hud">資金: <span id="funds">¥1,000,000</span></div>
 
+<!-- 選択モード切替ボタン -->
+<button id="selectModeBtn" title="選択モード" onclick="enterSelectMode()">🖱</button>
+
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-const map = L.map('map').setView([35.6812,139.7671],13);
+const map=L.map('map').setView([35.6812,139.7671],13);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
-let mode='select'; // 現在モード
-let tempTrackPoints=[];
-let tempStation=null;
+let mainTab='build';
+let buildType=null;
+let mode='select';
+let tempPoints=[];
 let funds=1000000;
-const DB={stations:{},tracks:{}};
-let nextStationId=1,nextTrackId=1;
+const DB={stations:[],tracks:[],facilities:[],shops:[]};
 const tempLayers=[];
 
-function setMode(newMode){
-  mode=newMode;
+function formatYen(n){return '¥'+n.toLocaleString();}
+function updateFunds(){document.getElementById('funds').textContent=formatYen(funds);}
+
+function switchMainTab(tab){
+  mainTab=tab;
   document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelector(`[onclick="setMode('${newMode}')"]`).classList.add('active');
-  const bar=document.getElementById('actionBar');
-  if(newMode==='station' || newMode==='track'){ bar.classList.add('show'); }
-  else{ bar.classList.remove('show'); }
+  document.querySelector(`[onclick="switchMainTab('${tab}')"]`).classList.add('active');
+  const buildBar=document.getElementById('buildBar');
+  if(tab==='build') buildBar.classList.add('show');
+  else buildBar.classList.remove('show');
+  resetMode();
 }
 
-map.on('click', e=>{
-  if(mode==='station') placeTempStation(e.latlng);
-  if(mode==='track') addTrackNode(e.latlng);
-  if(mode==='select') selectObject(e.latlng);
+function resetMode(){
+  mode='select';
+  buildType=null;
+  tempPoints=[];
+  tempLayers.forEach(l=>map.removeLayer(l));
+  tempLayers.length=0;
+  document.querySelectorAll('.build-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('actionBar').classList.remove('show');
+}
+
+function setBuildType(type){
+  buildType=type;
+  mode='build';
+  document.querySelectorAll('.build-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[onclick="setBuildType('${type}')"]`).classList.add('active');
+  document.getElementById('actionBar').classList.add('show');
+}
+
+function enterSelectMode(){
+  resetMode();
+  mode='select';
+}
+
+map.on('click',e=>{
+  if(mode==='build' && buildType){
+    if(buildType==='station') placeTempStation(e.latlng);
+    if(buildType==='track') addTempTrack(e.latlng);
+  } else if(mode==='select'){
+    selectObject(e.latlng);
+  }
 });
 
-function formatYen(n){return '¥'+n.toLocaleString();}
-
-function updateFunds(){
-  document.getElementById('funds').textContent=formatYen(funds);
-}
-
-/*--------------------------
-  駅建設
----------------------------*/
+/* ==== 仮設処理 ==== */
 function placeTempStation(latlng){
-  if(tempStation) map.removeLayer(tempStation.marker);
-  tempStation={latlng,marker:L.circleMarker(latlng,{radius:6,color:'#facc15'}).addTo(map)};
+  cancelTemp();
+  const m=L.circleMarker(latlng,{radius:6,color:'#facc15'}).addTo(map);
+  tempLayers.push(m);
+  tempPoints=[latlng];
 }
-
-/*--------------------------
-  線路仮設
----------------------------*/
-function addTrackNode(latlng){
-  tempTrackPoints.push(latlng);
-  const p=L.circleMarker(latlng,{radius:4,color:'#5aa0f0'}).addTo(map);
-  tempLayers.push(p);
-  if(tempTrackPoints.length>1){
-    const l=L.polyline([tempTrackPoints[tempTrackPoints.length-2],latlng],
-      {color:'#2c7dce',weight:3,opacity:0.6,dashArray:'6,6'}).addTo(map);
+function addTempTrack(latlng){
+  tempPoints.push(latlng);
+  const m=L.circleMarker(latlng,{radius:4,color:'#5aa0f0'}).addTo(map);
+  tempLayers.push(m);
+  if(tempPoints.length>1){
+    const l=L.polyline([tempPoints[tempPoints.length-2],latlng],{color:'#2c7dce',weight:3,opacity:0.6,dashArray:'6,6'}).addTo(map);
     tempLayers.push(l);
   }
 }
-
 function undoTemp(){
-  if(mode==='track' && tempTrackPoints.length>0){
-    tempTrackPoints.pop();
+  if(tempPoints.length>0){
+    tempPoints.pop();
     const last=tempLayers.pop();
     if(last) map.removeLayer(last);
   }
-  if(mode==='station' && tempStation){
-    map.removeLayer(tempStation.marker);
-    tempStation=null;
-  }
 }
-
 function cancelTemp(){
-  tempTrackPoints=[];
+  tempPoints=[];
   tempLayers.forEach(l=>map.removeLayer(l));
   tempLayers.length=0;
-  if(tempStation){map.removeLayer(tempStation.marker);tempStation=null;}
 }
 
-/*--------------------------
-  確定処理
----------------------------*/
+/* ==== 確定 ==== */
 function confirmTemp(){
-  if(mode==='station' && tempStation){
-    const id='S'+nextStationId++;
-    const marker=L.circleMarker(tempStation.latlng,{radius:8,color:'#2c7dce',fillColor:'#2c7dce',fillOpacity:1})
-      .addTo(map).bindPopup(`<strong>駅 ${id}</strong><br>建設費 ¥50,000`);
-    DB.stations[id]={id,latlng:tempStation.latlng,marker};
+  if(buildType==='station' && tempPoints.length){
+    const s=L.circleMarker(tempPoints[0],{radius:8,color:'#2c7dce',fillColor:'#2c7dce',fillOpacity:1}).addTo(map)
+      .bindPopup('駅（撤去可）');
+    DB.stations.push(s);
     funds-=50000;updateFunds();
-    map.removeLayer(tempStation.marker);
-    tempStation=null;
+    cancelTemp();
   }
-  if(mode==='track' && tempTrackPoints.length>1){
-    for(let i=0;i<tempTrackPoints.length-1;i++){
-      const id='T'+nextTrackId++;
-      const line=L.polyline([tempTrackPoints[i],tempTrackPoints[i+1]],{color:'#2c7dce',weight:4}).addTo(map);
-      DB.tracks[id]={id,line};
-    }
-    funds-=tempTrackPoints.length*10000;updateFunds();
+  if(buildType==='track' && tempPoints.length>1){
+    const line=L.polyline(tempPoints,{color:'#2c7dce',weight:4}).addTo(map)
+      .bindPopup('線路（撤去可）');
+    DB.tracks.push(line);
+    funds-=tempPoints.length*10000;updateFunds();
     cancelTemp();
   }
 }
 
-/*--------------------------
-  選択モード
----------------------------*/
-function selectObject(latlng){
-  // 駅判定
-  let found=null,min=80;
-  for(const s of Object.values(DB.stations)){
-    const d=map.distance(latlng,s.latlng);
-    if(d<min){min=d;found=s;}
-  }
-  if(found){
-    found.marker.openPopup();
-    return;
-  }
-  // 線路判定（近い点があれば情報表示）
-  for(const t of Object.values(DB.tracks)){
-    const ll=t.line.getLatLngs();
-    for(let i=0;i<ll.length-1;i++){
-      const mid=L.latLng((ll[i].lat+ll[i+1].lat)/2,(ll[i].lng+ll[i+1].lng)/2);
-      if(map.distance(latlng,mid)<40){
-        L.popup().setLatLng(latlng).setContent(`<strong>線路 ${t.id}</strong><br>区間情報: ${ll.length-1} 本`).openOn(map);
-        return;
+/* ==== 撤去 ==== */
+map.on('contextmenu',e=>{
+  if(mode==='build'){
+    let target=null;
+    for(const s of DB.stations){
+      if(map.distance(e.latlng,s.getLatLng())<50){target=s;break;}
+    }
+    if(target){map.removeLayer(target);DB.stations=DB.stations.filter(x=>x!==target);funds+=25000;updateFunds();return;}
+    for(const t of DB.tracks){
+      const ll=t.getLatLngs();
+      for(let i=0;i<ll.length-1;i++){
+        const mid=L.latLng((ll[i].lat+ll[i+1].lat)/2,(ll[i].lng+ll[i+1].lng)/2);
+        if(map.distance(e.latlng,mid)<40){map.removeLayer(t);DB.tracks=DB.tracks.filter(x=>x!==t);funds+=5000;updateFunds();return;}
       }
     }
   }
+});
+
+/* ==== 選択モード ==== */
+function selectObject(latlng){
+  let found=null,min=80;
+  for(const s of DB.stations){
+    const d=map.distance(latlng,s.getLatLng());
+    if(d<min){min=d;found=s;}
+  }
+  if(found){found.openPopup();}
 }
 
 updateFunds();
